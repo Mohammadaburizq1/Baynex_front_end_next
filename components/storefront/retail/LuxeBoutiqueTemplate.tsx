@@ -1,0 +1,472 @@
+'use client';
+
+import { useState, useMemo } from 'react';
+import type { StorefrontData, PublicProduct } from '@/lib/types/store';
+import { ShoppingBag, X } from 'lucide-react';
+import { Playfair_Display } from 'next/font/google';
+
+const playfair = Playfair_Display({
+  subsets: ['latin'],
+  weight: ['400', '600', '700'],
+  display: 'swap',
+});
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface CartItem {
+  product: PublicProduct;
+  qty: number;
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const COLORS = {
+  white: '#FFFFFF',
+  black: '#000000',
+  faint: '#F5F5F5',
+  gold: '#8B7355',
+  divider: '#E8E8E8',
+  muted: '#666666',
+} as const;
+
+// ─── Image Component ──────────────────────────────────────────────────────────
+
+function ProductImage({
+  imageUrl,
+  name,
+  className = '',
+}: {
+  imageUrl: string | null;
+  name: string;
+  className?: string;
+}) {
+  if (imageUrl) {
+    return (
+      <img
+        src={imageUrl}
+        alt={name}
+        className={`w-full h-full object-cover ${className}`}
+      />
+    );
+  }
+  return (
+    <div
+      className={`w-full h-full flex items-center justify-center ${className}`}
+      style={{ background: COLORS.faint }}
+    >
+      <ShoppingBag size={28} color={COLORS.gold} />
+    </div>
+  );
+}
+
+// ─── Product Card ─────────────────────────────────────────────────────────────
+
+function ProductCard({
+  product,
+  index,
+  currencySuffix,
+  onAdd,
+}: {
+  product: PublicProduct;
+  index: number;
+  currencySuffix: string;
+  onAdd: (id: number) => void;
+}) {
+  const displayPrice = product.discountPrice ?? product.price;
+  const hasDiscount = product.discountPrice !== null && product.discountPrice < product.price;
+  // Every 4th card gets a wider aspect ratio
+  const isWide = index % 4 === 3;
+
+  return (
+    <div className="break-inside-avoid mb-4 cursor-pointer group">
+      {/* Image */}
+      <div
+        className="overflow-hidden"
+        style={{ aspectRatio: isWide ? '4/3' : '3/4' }}
+      >
+        <ProductImage
+          imageUrl={product.imageUrl}
+          name={product.name}
+          className="transition-transform duration-500 group-hover:scale-105"
+        />
+      </div>
+
+      {/* Info */}
+      <div className="pt-3">
+        <p
+          className="font-jakarta font-semibold text-[11px] uppercase tracking-widest"
+          style={{ color: COLORS.muted }}
+        >
+          {product.category}
+        </p>
+        <h3
+          className={`${playfair.className} text-[18px] leading-tight mt-1`}
+          style={{ color: COLORS.black }}
+        >
+          {product.name}
+        </h3>
+
+        {/* Price */}
+        <div className="mt-1 flex items-baseline gap-2">
+          {hasDiscount && (
+            <span
+              className="font-jakarta text-xs line-through"
+              style={{ color: COLORS.muted }}
+            >
+              {product.price.toLocaleString()} {currencySuffix}
+            </span>
+          )}
+          <span
+            className="font-jakarta font-semibold text-sm"
+            style={{ color: COLORS.black }}
+          >
+            {displayPrice.toLocaleString()} {currencySuffix}
+          </span>
+        </div>
+
+        {/* Add to bag */}
+        {product.available && product.stock > 0 ? (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onAdd(product.id);
+            }}
+            className="font-jakarta text-xs underline mt-2 cursor-pointer hover:opacity-60 transition-opacity"
+            style={{ color: COLORS.black }}
+            aria-label={`Add ${product.name} to bag`}
+          >
+            Add to bag
+          </button>
+        ) : (
+          <span
+            className="font-jakarta text-xs mt-2 block"
+            style={{ color: COLORS.muted }}
+          >
+            Out of stock
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Cart Drawer ──────────────────────────────────────────────────────────────
+
+function CartDrawer({
+  cart,
+  open,
+  currencySuffix,
+  onClose,
+  onRemove,
+}: {
+  cart: CartItem[];
+  open: boolean;
+  currencySuffix: string;
+  onClose: () => void;
+  onRemove: (id: number) => void;
+}) {
+  const total = cart.reduce((sum, item) => {
+    const price = item.product.discountPrice ?? item.product.price;
+    return sum + price * item.qty;
+  }, 0);
+
+  return (
+    <>
+      {/* Overlay */}
+      {open && (
+        <div
+          className="fixed inset-0 bg-black/20 z-40"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Drawer */}
+      <div
+        role="dialog"
+        aria-label="Shopping cart"
+        aria-modal="true"
+        className="fixed inset-y-0 right-0 w-96 bg-white border-l shadow-2xl z-50 flex flex-col"
+        style={{
+          borderColor: COLORS.divider,
+          transform: open ? 'translateX(0)' : 'translateX(100%)',
+          transition: 'transform 300ms ease',
+        }}
+      >
+        {/* Header */}
+        <div
+          className="px-6 py-5 border-b flex justify-between items-center"
+          style={{ borderColor: COLORS.divider }}
+        >
+          <h2 className={`${playfair.className} text-xl`} style={{ color: COLORS.black }}>
+            YOUR BAG
+          </h2>
+          <button
+            onClick={onClose}
+            className="p-1 hover:opacity-60 transition-opacity cursor-pointer"
+            aria-label="Close cart"
+          >
+            <X size={20} color={COLORS.black} />
+          </button>
+        </div>
+
+        {/* Items */}
+        <div className="flex-1 overflow-y-auto px-6">
+          {cart.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full gap-4">
+              <ShoppingBag size={36} color={COLORS.gold} />
+              <p
+                className={`${playfair.className} text-lg`}
+                style={{ color: COLORS.muted }}
+              >
+                Your bag is empty
+              </p>
+            </div>
+          ) : (
+            cart.map((item) => {
+              const price = item.product.discountPrice ?? item.product.price;
+              return (
+                <div
+                  key={item.product.id}
+                  className="flex gap-3 py-4 border-b items-start"
+                  style={{ borderColor: COLORS.divider }}
+                >
+                  {/* Thumbnail */}
+                  <div className="w-20 h-20 flex-shrink-0 overflow-hidden">
+                    <ProductImage imageUrl={item.product.imageUrl} name={item.product.name} />
+                  </div>
+
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <p
+                      className={`${playfair.className} text-base leading-tight`}
+                      style={{ color: COLORS.black }}
+                    >
+                      {item.product.name}
+                    </p>
+                    <p
+                      className="font-jakarta text-sm mt-1"
+                      style={{ color: COLORS.muted }}
+                    >
+                      {price.toLocaleString()} {currencySuffix}
+                      {item.qty > 1 && (
+                        <span className="ml-2 text-xs">× {item.qty}</span>
+                      )}
+                    </p>
+                  </div>
+
+                  {/* Remove */}
+                  <button
+                    onClick={() => onRemove(item.product.id)}
+                    className="flex-shrink-0 p-1 hover:opacity-60 transition-opacity cursor-pointer"
+                    aria-label={`Remove ${item.product.name}`}
+                  >
+                    <X size={14} color={COLORS.muted} />
+                  </button>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Footer */}
+        {cart.length > 0 && (
+          <div className="px-6 py-5 border-t" style={{ borderColor: COLORS.divider }}>
+            <div className="flex justify-between items-baseline mb-3">
+              <span className="font-jakarta text-sm" style={{ color: COLORS.muted }}>
+                Total
+              </span>
+              <span className={`${playfair.className} text-xl`} style={{ color: COLORS.black }}>
+                {total.toLocaleString()} {currencySuffix}
+              </span>
+            </div>
+            <button
+              className="font-jakarta font-bold text-base text-white w-full h-14 cursor-pointer hover:opacity-90 transition-opacity"
+              style={{ background: COLORS.black, borderRadius: 0 }}
+            >
+              Proceed to Checkout
+            </button>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
+export default function LuxeBoutiqueTemplate({ data }: { data: StorefrontData }) {
+  const [activeCategory, setActiveCategory] = useState<string>('All');
+  const [cartOpen, setCartOpen] = useState(false);
+  const [cart, setCart] = useState<CartItem[]>([]);
+
+  const categories = useMemo(() => {
+    const cats = Array.from(new Set(data.products.map((p) => p.category)));
+    return ['All', ...cats];
+  }, [data.products]);
+
+  const filtered = useMemo(() => {
+    if (activeCategory === 'All') return data.products;
+    return data.products.filter((p) => p.category === activeCategory);
+  }, [data.products, activeCategory]);
+
+  const cartCount = cart.reduce((sum, item) => sum + item.qty, 0);
+
+  function addToCart(id: number) {
+    const product = data.products.find((p) => p.id === id);
+    if (!product) return;
+    setCart((prev) => {
+      const existing = prev.find((item) => item.product.id === id);
+      if (existing) {
+        return prev.map((item) =>
+          item.product.id === id ? { ...item, qty: item.qty + 1 } : item
+        );
+      }
+      return [...prev, { product, qty: 1 }];
+    });
+  }
+
+  function removeFromCart(id: number) {
+    setCart((prev) => prev.filter((item) => item.product.id !== id));
+  }
+
+  return (
+    <div className="min-h-screen font-jakarta" style={{ background: COLORS.white }}>
+      {/* ── Header ── */}
+      <header
+        className="bg-white border-b px-6 md:px-12 h-16 flex items-center justify-between sticky top-0 z-20"
+        style={{ borderColor: COLORS.divider }}
+      >
+        <span
+          className={`${playfair.className} text-[22px] font-normal tracking-tight`}
+          style={{ color: COLORS.black }}
+        >
+          {data.store.shopName}
+        </span>
+
+        <button
+          onClick={() => setCartOpen(true)}
+          className="flex items-center gap-1 cursor-pointer hover:opacity-60 transition-opacity"
+          aria-label={`Open cart, ${cartCount} items`}
+        >
+          <ShoppingBag size={20} color={COLORS.black} />
+          <span className="font-jakarta text-sm" style={{ color: COLORS.black }}>
+            ({cartCount})
+          </span>
+        </button>
+      </header>
+
+      {/* ── Hero ── */}
+      <section className="px-6 md:px-12 py-12 md:py-20">
+        <h1
+          className={`${playfair.className} text-[42px] md:text-[64px] font-normal leading-none tracking-tight`}
+          style={{ color: COLORS.black }}
+        >
+          THE COLLECTION
+        </h1>
+        <p
+          className="font-jakarta text-[16px] mt-4 max-w-lg"
+          style={{ color: COLORS.muted }}
+        >
+          {data.store.description || `Curated pieces from ${data.store.shopName}`}
+        </p>
+        <button
+          className="font-jakarta font-semibold text-sm underline mt-6 cursor-pointer hover:opacity-60 transition-opacity"
+          style={{ color: COLORS.black }}
+          onClick={() => {
+            document.getElementById('lb-products')?.scrollIntoView({ behavior: 'smooth' });
+          }}
+        >
+          Explore →
+        </button>
+      </section>
+
+      {/* ── Category Pills ── */}
+      <div className="px-6 md:px-12 mb-8 flex gap-3 flex-wrap">
+        {categories.map((cat) => {
+          const isActive = cat === activeCategory;
+          return (
+            <button
+              key={cat}
+              onClick={() => setActiveCategory(cat)}
+              className="border px-5 py-2 font-jakarta font-semibold text-xs uppercase tracking-widest cursor-pointer transition-colors"
+              style={{
+                borderColor: COLORS.black,
+                background: isActive ? COLORS.black : COLORS.white,
+                color: isActive ? COLORS.white : COLORS.black,
+              }}
+              aria-pressed={isActive}
+            >
+              {cat}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Masonry Grid ── */}
+      <main
+        id="lb-products"
+        className="px-6 md:px-12 pb-16"
+        style={{ columns: '2', gap: '16px' }}
+      >
+        <style>{`
+          @media (min-width: 768px) { #lb-products { columns: 3 !important; } }
+          @media (min-width: 1024px) { #lb-products { columns: 4 !important; } }
+        `}</style>
+        {filtered.length === 0 ? (
+          <div
+            className="py-20 flex flex-col items-center gap-3"
+            style={{ columnSpan: 'all' } as React.CSSProperties}
+          >
+            <ShoppingBag size={40} color={COLORS.gold} />
+            <p className="font-jakarta text-sm" style={{ color: COLORS.muted }}>
+              No products in this category
+            </p>
+          </div>
+        ) : (
+          filtered.map((product, index) => (
+            <ProductCard
+              key={product.id}
+              product={product}
+              index={index}
+              currencySuffix={data.store.currencySuffix}
+              onAdd={addToCart}
+            />
+          ))
+        )}
+      </main>
+
+      {/* ── Cart Drawer ── */}
+      <CartDrawer
+        cart={cart}
+        open={cartOpen}
+        currencySuffix={data.store.currencySuffix}
+        onClose={() => setCartOpen(false)}
+        onRemove={removeFromCart}
+      />
+
+      {/* ── Footer ── */}
+      <footer
+        className="px-6 md:px-12 py-16 border-t"
+        style={{ borderColor: COLORS.divider }}
+      >
+        <p
+          className={`${playfair.className} text-[28px]`}
+          style={{ color: COLORS.black }}
+        >
+          {data.store.shopName}
+        </p>
+        {data.store.openingHours && (
+          <p className="font-jakarta text-sm mt-2" style={{ color: COLORS.muted }}>
+            {data.store.openingHours}
+          </p>
+        )}
+        {data.store.deliveryInfo && (
+          <p className="font-jakarta text-sm mt-1" style={{ color: COLORS.muted }}>
+            {data.store.deliveryInfo}
+          </p>
+        )}
+      </footer>
+    </div>
+  );
+}
