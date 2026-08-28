@@ -87,6 +87,7 @@ function ProductCard({
 
 export default function IndustrialBrewTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');

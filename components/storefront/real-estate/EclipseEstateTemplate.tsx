@@ -85,6 +85,7 @@ function useCountUp(target: number, dur: number, active: boolean) {
 
 export default function EclipseEstateTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
   const [category, setCategory] = useState('All');
   const [navSolid, setNavSolid] = useState(false);
 
@@ -1030,7 +1031,7 @@ export default function EclipseEstateTemplate({ data }: { data: StorefrontData }
             Where Luxury<br />Finds Its Address
           </h1>
           <p className="ee-hero-sub">
-            {store.description || 'We represent a select collection of the world\'s most exceptional properties — homes that transcend the ordinary.'}
+            {tc?.heroDescription || store.description || 'We represent a select collection of the world\'s most exceptional properties — homes that transcend the ordinary.'}
           </p>
           <div className="ee-hero-btns">
             <button className="ee-btn-gold" onClick={() => scrollTo('ee-properties')}>View Listings</button>
@@ -1220,7 +1221,7 @@ export default function EclipseEstateTemplate({ data }: { data: StorefrontData }
             Enquire via WhatsApp
           </a>
           <div className="ee-cta-details">
-            {store.openingHours && <div className="ee-cta-detail"><Clock size={13} />{store.openingHours}</div>}
+            {(tc?.openingHours || store.openingHours) && <div className="ee-cta-detail"><Clock size={13} />{tc?.openingHours || store.openingHours}</div>}
             <div className="ee-cta-detail"><MapPin size={13} />Prime Business District</div>
             {store.whatsappNumber && <div className="ee-cta-detail"><Phone size={13} />{store.whatsappNumber}</div>}
           </div>

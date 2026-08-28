@@ -25,6 +25,7 @@ const CARD_COLORS = ['#C0562A', '#6B7A3C', '#D4A843', '#7C4A2D', '#4A6741'];
 
 export default function MediterraneoTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
   const [activeCategory, setActiveCategory] = useState('All');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
@@ -160,7 +161,7 @@ export default function MediterraneoTemplate({ data }: { data: StorefrontData })
             {store.shopName}
           </h1>
           <p className={dmSans.className} style={{ color: '#8C6B55', fontSize: 18, maxWidth: 480, margin: '18px auto 32px', lineHeight: 1.65, fontWeight: 400, animation: 'fadeUp 0.6s 0.4s ease both', opacity: 0 }}>
-            {store.description}
+            {tc?.heroDescription || store.description}
           </p>
 
           {/* Badges */}

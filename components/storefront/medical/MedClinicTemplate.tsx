@@ -81,6 +81,7 @@ const SVC_ICONS = [Stethoscope, Microscope, Heart, Brain, Bone, Eye, Activity, W
 
 export default function MedClinicTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
   const [navSolid, setNavSolid] = useState(false);
   const [activeT, setActiveT] = useState(0);
   const [category, setCategory] = useState('All');
@@ -528,7 +529,7 @@ export default function MedClinicTemplate({ data }: { data: StorefrontData }) {
             </h1>
             <div className="mc-sky-line" />
             <p className="mc-hero-desc">
-              {store.description || 'Comprehensive medical care from diagnosis to treatment. Expert doctors, advanced diagnostics, and genuine care for every patient.'}
+              {tc?.heroDescription || store.description || 'Comprehensive medical care from diagnosis to treatment. Expert doctors, advanced diagnostics, and genuine care for every patient.'}
             </p>
             <div className="mc-hero-btns">
               <button className="mc-btn-sky" onClick={() => scrollTo('mc-services')}>
@@ -701,7 +702,7 @@ export default function MedClinicTemplate({ data }: { data: StorefrontData }) {
               Book via WhatsApp
             </a>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-              {store.openingHours && <div className="mc-cta-detail"><Clock size={13} />{store.openingHours}</div>}
+              {(tc?.openingHours || store.openingHours) && <div className="mc-cta-detail"><Clock size={13} />{tc?.openingHours || store.openingHours}</div>}
               <div className="mc-cta-detail"><MapPin size={13} />Clinic Location</div>
               {store.whatsappNumber && <div className="mc-cta-detail"><Phone size={13} />{store.whatsappNumber}</div>}
             </div>

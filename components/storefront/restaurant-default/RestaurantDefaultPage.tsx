@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { StorefrontData, PublicProduct } from '@/lib/types/store';
 import { getCuisinePreset } from '@/lib/data/cuisine-presets';
 import RestaurantNavbar from './RestaurantNavbar';
@@ -11,6 +11,8 @@ import FullMenuSection from './FullMenuSection';
 import StorefrontFooter from './StorefrontFooter';
 import CartBar from './CartBar';
 import WhatsAppButton from './WhatsAppButton';
+import CheckoutDrawer from './CheckoutDrawer';
+import { readCartDraft, clearCartDraft } from '@/lib/utils/cart-draft';
 
 interface CartItem {
   product: PublicProduct;
@@ -26,6 +28,23 @@ export default function RestaurantDefaultPage({ data }: RestaurantDefaultPagePro
   const preset = getCuisinePreset(store.businessSubCategorySlug);
 
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [cartOpen, setCartOpen] = useState(false);
+
+  useEffect(() => {
+    const draft = readCartDraft(store.slug);
+    if (!draft || draft.length === 0) return;
+    const restored: CartItem[] = [];
+    for (const d of draft) {
+      const product = products.find((p) => String(p.id) === d.productId);
+      if (product) restored.push({ product, qty: d.qty });
+    }
+    if (restored.length > 0) {
+      setCart(restored);
+      setCartOpen(true);
+    }
+    clearCartDraft(store.slug);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.slug]);
 
   const cartCount = cart.reduce((s, i) => s + i.qty, 0);
   const cartTotal = cart.reduce((s, i) => s + (i.product.discountPrice ?? i.product.price) * i.qty, 0);
@@ -40,40 +59,57 @@ export default function RestaurantDefaultPage({ data }: RestaurantDefaultPagePro
     });
   }
 
+  function changeQty(productId: number, delta: number) {
+    setCart((prev) => prev
+      .map((i) => i.product.id === productId ? { ...i, qty: i.qty + delta } : i)
+      .filter((i) => i.qty > 0));
+  }
+
+  function removeFromCart(productId: number) {
+    setCart((prev) => prev.filter((i) => i.product.id !== productId));
+  }
+
+  const tc = data.templateContent;
+
   // — Content derivation —
-  const name = store.shopName.trim() || 'Foodie Restaurant';
-  const openingHours = store.openingHours.trim() || 'Open: 11:00am – 11:00pm';
+  const name = (store.shopName ?? '').trim() || 'Foodie Restaurant';
+  const openingHours = tc?.openingHours || (store.openingHours ?? '').trim() || 'Open: 11:00am – 11:00pm';
   const subtitle =
-    store.description.trim() ||
+    tc?.heroDescription ||
+    (store.description ?? '').trim() ||
     `Order online or visit us for ${preset.labelEn.toLowerCase()} made fresh.`;
 
-  let heroImageUrl = preset.heroImageUrl;
-  for (const p of products) {
-    if (p.imageUrl?.trim()) { heroImageUrl = p.imageUrl.trim(); break; }
-  }
-  if (heroImageUrl === preset.heroImageUrl && store.logoUrl?.trim()) {
-    heroImageUrl = store.logoUrl.trim();
+  let heroImageUrl = tc?.heroImageUrl || preset.heroImageUrl;
+  if (!tc?.heroImageUrl) {
+    for (const p of products) {
+      if (p.imageUrl?.trim()) { heroImageUrl = p.imageUrl.trim(); break; }
+    }
+    if (heroImageUrl === preset.heroImageUrl && store.logoUrl?.trim()) {
+      heroImageUrl = store.logoUrl.trim();
+    }
   }
 
-  let floatingCardImageUrl = preset.floatingImageUrl;
-  if (products.length > 1 && products[1].imageUrl?.trim()) {
-    floatingCardImageUrl = products[1].imageUrl.trim();
-  } else if (products.length > 0 && products[0].imageUrl?.trim()) {
-    floatingCardImageUrl = products[0].imageUrl.trim();
+  let floatingCardImageUrl = tc?.floatingCardImageUrl || preset.floatingImageUrl;
+  if (!tc?.floatingCardImageUrl) {
+    if (products.length > 1 && products[1].imageUrl?.trim()) {
+      floatingCardImageUrl = products[1].imageUrl.trim();
+    } else if (products.length > 0 && products[0].imageUrl?.trim()) {
+      floatingCardImageUrl = products[0].imageUrl.trim();
+    }
   }
 
   const heroContent = {
     storeName: name,
-    heroEyebrow: 'Welcome to',
+    heroEyebrow: tc?.heroEyebrow || 'Welcome to',
     heroTitleMain: name,
-    heroTitleEnjoyLine: preset.heroEnjoyLine,
-    heroHighlight: preset.heroHighlight,
+    heroTitleEnjoyLine: tc?.heroTitleEnjoyLine || preset.heroEnjoyLine,
+    heroHighlight: tc?.heroHighlight || preset.heroHighlight,
     heroSubtitle: subtitle,
-    primaryButtonLabel: 'Reserve a Table',
-    secondaryButtonLabel: 'Online Order',
+    primaryButtonLabel: tc?.primaryCta || 'Reserve a Table',
+    secondaryButtonLabel: tc?.secondaryCta || 'Online Order',
     heroImageUrl,
-    floatingCardName: preset.floatingCardName,
-    floatingCardBlurb: preset.floatingCardBlurb,
+    floatingCardName: tc?.floatingCardName || preset.floatingCardName,
+    floatingCardBlurb: tc?.floatingCardBlurb || preset.floatingCardBlurb,
     floatingCardImageUrl,
     bestFoodBadge: preset.bestFoodBadge,
     openingHours,
@@ -85,7 +121,7 @@ export default function RestaurantDefaultPage({ data }: RestaurantDefaultPagePro
         storeName={name}
         preset={preset}
         cartCount={cartCount}
-        onCart={() => {}}
+        onCart={() => setCartOpen(true)}
       />
 
       <main>
@@ -128,13 +164,24 @@ export default function RestaurantDefaultPage({ data }: RestaurantDefaultPagePro
         total={cartTotal}
         currencySuffix={store.currencySuffix}
         primary={preset.primary}
-        onOpen={() => {}}
+        onOpen={() => setCartOpen(true)}
       />
 
       <WhatsAppButton
         whatsappNumber={store.whatsappNumber}
         storeName={name}
         primary={preset.primary}
+      />
+
+      <CheckoutDrawer
+        open={cartOpen}
+        onClose={() => setCartOpen(false)}
+        storeSlug={store.slug}
+        cart={cart}
+        currencySuffix={store.currencySuffix}
+        onChangeQty={changeQty}
+        onRemove={removeFromCart}
+        onOrderPlaced={() => setCart([])}
       />
     </div>
   );

@@ -41,6 +41,7 @@ function SpecIcon({ label }: { label: string }) {
 
 export default function PrestigeEstateTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
   const [activeCategory, setActiveCategory] = useState('All');
   const [selected, setSelected] = useState<(typeof products)[0] | null>(null);
 
@@ -204,7 +205,7 @@ export default function PrestigeEstateTemplate({ data }: { data: StorefrontData 
             <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <MapPin size={13} color="#4A5A70" />
-                <span className={raleway.className} style={{ fontSize: 12, color: '#4A5A70', letterSpacing: '0.06em' }}>{store.openingHours}</span>
+                <span className={raleway.className} style={{ fontSize: 12, color: '#4A5A70', letterSpacing: '0.06em' }}>{tc?.openingHours || store.openingHours}</span>
               </div>
               <a href={waHref} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'transparent', border: '1px solid #C9A84C', color: '#C9A84C', padding: '8px 20px', cursor: 'pointer', letterSpacing: '0.12em', fontSize: 12, textDecoration: 'none', fontFamily: raleway.style.fontFamily, fontWeight: 600, transition: 'background 0.2s, color 0.2s' }}>
                 <Phone size={13} />
@@ -249,7 +250,7 @@ export default function PrestigeEstateTemplate({ data }: { data: StorefrontData 
           </div>
 
           <p className={raleway.className} style={{ color: '#3A4A5C', fontSize: 16, maxWidth: 520, margin: '0 auto 44px', lineHeight: 1.75, fontWeight: 400, animation: 'fadeUp 0.6s 0.6s ease both', opacity: 0 }}>
-            {store.description}
+            {tc?.heroDescription || store.description}
           </p>
 
           <a href={waHref} target="_blank" rel="noopener noreferrer" className={`pe-cta ${raleway.className}`} style={{ fontSize: 12, textDecoration: 'none', animation: 'fadeUp 0.6s 0.76s ease both, goldPulse 3s 3s ease infinite', opacity: 0 }}>

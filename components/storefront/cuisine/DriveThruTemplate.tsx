@@ -97,6 +97,7 @@ function ProductCard({
 
 export default function DriveThruTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
 
   const [cart, setCart] = useState<CartItem[]>([]);
 

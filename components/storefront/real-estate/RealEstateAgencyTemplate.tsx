@@ -102,6 +102,7 @@ const WHY_FEATURES = [
 
 export default function RealEstateAgencyTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
   const [category, setCategory] = useState('All');
   const [navScrolled, setNavScrolled] = useState(false);
 
@@ -1031,7 +1032,7 @@ export default function RealEstateAgencyTemplate({ data }: { data: StorefrontDat
             Your Vision,<br />Our Expertise
           </h1>
           <p className="ra-hero-desc">
-            {store.description || 'A trusted partner in luxury real estate. We guide you from discovery to keys in hand — with integrity, precision, and passion.'}
+            {tc?.heroDescription || store.description || 'A trusted partner in luxury real estate. We guide you from discovery to keys in hand — with integrity, precision, and passion.'}
           </p>
           <div className="ra-hero-btns">
             <button className="ra-btn-outline-white" onClick={() => scrollTo('ra-properties')}>
@@ -1289,10 +1290,10 @@ export default function RealEstateAgencyTemplate({ data }: { data: StorefrontDat
             Message Us on WhatsApp
           </a>
           <div className="ra-contact-details">
-            {store.openingHours && (
+            {(tc?.openingHours || store.openingHours) && (
               <div className="ra-contact-detail">
                 <Clock size={14} />
-                {store.openingHours}
+                {tc?.openingHours || store.openingHours}
               </div>
             )}
             <div className="ra-contact-detail">

@@ -38,6 +38,7 @@ function parseBaths(description: string): number | null {
 
 export default function OpenHouseTemplate({ data }: OpenHouseTemplateProps) {
   const { store, products } = data;
+  const tc = data.templateContent;
 
   const [activeCategory, setActiveCategory] = useState<string>('All');
   const [selectedProperty, setSelectedProperty] = useState<PublicProduct | null>(null);
@@ -113,13 +114,13 @@ export default function OpenHouseTemplate({ data }: OpenHouseTemplateProps) {
         />
         <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6">
           <p className="font-jakarta font-extrabold text-[11px] tracking-widest text-white/70 uppercase mb-3">
-            Property Listings
+            {tc?.heroEyebrow || 'Property Listings'}
           </p>
           <h1 className="font-jakarta font-extrabold text-5xl md:text-6xl text-white leading-none">
             {store.shopName}
           </h1>
           <p className="font-jakarta text-lg text-white/70 mt-4">
-            {store.description || 'Find your perfect property'}
+            {tc?.heroDescription || store.description || 'Find your perfect property'}
           </p>
           <ChevronDown size={28} className="text-white/50 mt-8 animate-bounce" />
         </div>
@@ -235,10 +236,10 @@ export default function OpenHouseTemplate({ data }: OpenHouseTemplateProps) {
       >
         <p className="font-jakarta font-extrabold text-2xl">{store.shopName}</p>
         <p className="font-jakarta text-sm text-white/60 mt-1">
-          {store.description || 'Your trusted property partner'}
+          {tc?.footerAbout || store.description || 'Your trusted property partner'}
         </p>
-        {store.openingHours && (
-          <p className="font-jakarta text-sm text-white/60 mt-1">{store.openingHours}</p>
+        {(tc?.openingHours || store.openingHours) && (
+          <p className="font-jakarta text-sm text-white/60 mt-1">{tc?.openingHours || store.openingHours}</p>
         )}
       </footer>
 

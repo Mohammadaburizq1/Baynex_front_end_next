@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Search, Plus, Pencil, Trash2, ShoppingBag } from 'lucide-react';
 import { Header } from '@/components/dashboard/Header';
 import { Button } from '@/components/ui/Button';
@@ -11,13 +11,36 @@ import { Modal, ConfirmDialog } from '@/components/ui/Modal';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
 import { useStore } from '@/contexts/StoreContext';
-import { mockProducts, mockCategories } from '@/lib/mock-data';
+import { loadStoreCategories } from '@/lib/utils/store-scoped-data';
 import {
   formatCurrency,
   PRODUCT_STATUS_MAP,
   PRODUCT_LABEL,
 } from '@/lib/utils';
 import type { Product, ProductStatus } from '@/lib/types';
+import type { ApiProduct } from '@/lib/api/products';
+
+// ── Map API product → local Product ────────────────────────────────────────────
+
+function apiToProduct(p: ApiProduct): Product {
+  return {
+    id: p.id,
+    name: p.name,
+    description: p.description ?? '',
+    price: p.price,
+    comparePrice: p.comparePrice ?? p.discountPrice,
+    category: p.category ?? '',
+    categoryId: p.categoryId ?? p.category ?? '',
+    images: p.images ?? (p.imageUrl ? [p.imageUrl] : []),
+    stock: p.stock ?? 0,
+    sku: p.sku ?? '',
+    status: p.status,
+    featured: p.featured ?? false,
+    tags: p.tags ?? [],
+    createdAt: p.createdAt ?? new Date().toISOString(),
+    updatedAt: p.updatedAt ?? new Date().toISOString(),
+  };
+}
 
 // ── Form state ─────────────────────────────────────────────────────────────────
 
@@ -59,11 +82,38 @@ function productToForm(p: Product): ProductForm {
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function ProductsPage() {
-  const { businessType } = useStore();
+  const { store, businessType } = useStore();
   const { success, error: toastError } = useToast();
 
-  // Local product state (seeded from mock)
-  const [products, setProducts] = useState<Product[]>(mockProducts);
+  const categories = useMemo(
+    () => loadStoreCategories(businessType),
+    [businessType],
+  );
+
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(true);
+
+  useEffect(() => {
+    async function fetchProducts() {
+      const token = localStorage.getItem('sl_access_token') ?? localStorage.getItem('authToken');
+      if (!token) {
+        const { loadStoreProducts } = await import('@/lib/utils/store-scoped-data');
+        setProducts(loadStoreProducts(store.slug));
+        setLoadingProducts(false);
+        return;
+      }
+      try {
+        const { getProducts } = await import('@/lib/api/products');
+        const apiProducts = await getProducts();
+        setProducts(apiProducts.map(apiToProduct));
+      } catch {
+        const { loadStoreProducts } = await import('@/lib/utils/store-scoped-data');
+        setProducts(loadStoreProducts(store.slug));
+      }
+      setLoadingProducts(false);
+    }
+    fetchProducts();
+  }, [store.slug]);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -88,7 +138,7 @@ export default function ProductsPage() {
       const matchesSearch =
         !search || p.name.toLowerCase().includes(search.toLowerCase());
       const matchesCategory =
-        !categoryFilter || p.categoryId === categoryFilter;
+        !categoryFilter || p.categoryId === categoryFilter || p.category === categoryFilter;
       const matchesStatus =
         !statusFilter || p.status === statusFilter;
       return matchesSearch && matchesCategory && matchesStatus;
@@ -124,7 +174,7 @@ export default function ProductsPage() {
     setFormError('');
   }
 
-  function handleSave() {
+  async function handleSave() {
     if (!form.name.trim()) {
       setFormError('Product name is required.');
       return;
@@ -135,75 +185,55 @@ export default function ProductsPage() {
     }
 
     setSaving(true);
+    setFormError('');
 
-    // Simulate async save
-    setTimeout(() => {
-      const categoryObj = mockCategories.find(c => c.id === form.categoryId);
-      const now = new Date().toISOString();
+    try {
+      const { createProduct, updateProduct } = await import('@/lib/api/products');
+      const categoryObj = categories.find(c => c.id === form.categoryId);
+      const payload: Partial<ApiProduct> = {
+        name: form.name.trim(),
+        description: form.description,
+        price: Number(form.price),
+        comparePrice: form.comparePrice ? Number(form.comparePrice) : undefined,
+        stock: Number(form.stock) || 0,
+        category: categoryObj?.name ?? form.categoryId,
+        categoryId: form.categoryId || undefined,
+        status: form.status,
+        featured: form.featured,
+      };
 
       if (editingProduct) {
-        setProducts(prev =>
-          prev.map(p =>
-            p.id === editingProduct.id
-              ? {
-                  ...p,
-                  name: form.name.trim(),
-                  description: form.description,
-                  categoryId: form.categoryId,
-                  category: categoryObj?.name ?? p.category,
-                  price: Number(form.price),
-                  comparePrice: form.comparePrice
-                    ? Number(form.comparePrice)
-                    : undefined,
-                  stock: Number(form.stock) || 0,
-                  status: form.status,
-                  featured: form.featured,
-                  updatedAt: now,
-                }
-              : p,
-          ),
-        );
+        const updated = await updateProduct(editingProduct.id, store.id, payload);
+        setProducts(prev => prev.map(p => p.id === editingProduct.id ? apiToProduct(updated) : p));
         success('Product updated successfully.');
       } else {
-        const newProduct: Product = {
-          id: `p-${Date.now()}`,
-          name: form.name.trim(),
-          description: form.description,
-          categoryId: form.categoryId,
-          category: categoryObj?.name ?? '',
-          price: Number(form.price),
-          comparePrice: form.comparePrice
-            ? Number(form.comparePrice)
-            : undefined,
-          stock: Number(form.stock) || 0,
-          sku: `SKU-${Date.now()}`,
-          images: [],
-          status: form.status,
-          featured: form.featured,
-          tags: [],
-          createdAt: now,
-          updatedAt: now,
-        };
-        setProducts(prev => [newProduct, ...prev]);
+        const created = await createProduct(store.id, payload);
+        setProducts(prev => [apiToProduct(created), ...prev]);
         success('Product added successfully.');
       }
-
-      setSaving(false);
       closeModal();
-    }, 600);
+    } catch {
+      setFormError('Failed to save product. Please try again.');
+    }
+
+    setSaving(false);
   }
 
   // ── Delete ───────────────────────────────────────────────────────────────────
 
-  function handleDelete() {
+  async function handleDelete() {
     if (!deleteTarget) return;
     setDeleting(true);
-    setTimeout(() => {
+    try {
+      const { deleteProduct } = await import('@/lib/api/products');
+      await deleteProduct(deleteTarget.id);
       setProducts(prev => prev.filter(p => p.id !== deleteTarget.id));
       success(`"${deleteTarget.name}" has been deleted.`);
-      setDeleting(false);
       setDeleteTarget(null);
-    }, 500);
+    } catch {
+      toastError('Failed to delete product. Please try again.');
+    }
+    setDeleting(false);
   }
 
   // ── Label based on business type ────────────────────────────────────────────
@@ -212,7 +242,7 @@ export default function ProductsPage() {
 
   // ── Category / status select options ────────────────────────────────────────
 
-  const categoryOptions = mockCategories.map(c => ({
+  const categoryOptions = categories.map(c => ({
     value: c.id,
     label: c.name,
   }));
@@ -268,7 +298,11 @@ export default function ProductsPage() {
         </div>
 
         {/* ── Product grid ─────────────────────────────────────────────────── */}
-        {filtered.length === 0 ? (
+        {loadingProducts ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="w-8 h-8 rounded-full border-2 border-primary-500 border-t-transparent animate-spin" />
+          </div>
+        ) : filtered.length === 0 ? (
           <EmptyState
             icon={<ShoppingBag size={28} />}
             title="No products found"
@@ -281,9 +315,17 @@ export default function ProductsPage() {
               const statusMeta = PRODUCT_STATUS_MAP[product.status];
               return (
                 <Card key={product.id} padding="none" className="overflow-hidden flex flex-col">
-                  {/* Image placeholder */}
-                  <div className="relative aspect-square bg-surface-100 flex items-center justify-center">
-                    <ShoppingBag size={32} className="text-slate-300" />
+                  {/* Image */}
+                  <div className="relative aspect-square bg-surface-100 flex items-center justify-center overflow-hidden">
+                    {product.images[0] ? (
+                      <img
+                        src={product.images[0]}
+                        alt={product.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <ShoppingBag size={32} className="text-slate-300" />
+                    )}
                     {product.featured && (
                       <div className="absolute top-2 right-2">
                         <Badge variant="warning">Featured</Badge>

@@ -78,6 +78,7 @@ const TESTIMONIALS = [
 
 export default function AuroraWellnessTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
   const [category, setCategory] = useState('All');
   const [navSolid, setNavSolid] = useState(false);
   const [activeT, setActiveT] = useState(0);
@@ -630,7 +631,7 @@ export default function AuroraWellnessTemplate({ data }: { data: StorefrontData 
             </h1>
             <div className="aw-terra-line" />
             <p className="aw-hero-desc">
-              {store.description || 'Personalised wellness programmes, expert practitioners, and a warm community — everything you need to thrive.'}
+              {tc?.heroDescription || store.description || 'Personalised wellness programmes, expert practitioners, and a warm community — everything you need to thrive.'}
             </p>
             <div className="aw-hero-btns">
               <button className="aw-btn-terra" onClick={() => scrollTo('aw-services')}>
@@ -826,7 +827,7 @@ export default function AuroraWellnessTemplate({ data }: { data: StorefrontData 
               Book via WhatsApp
             </a>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-              {store.openingHours && <div className="aw-cta-detail"><Clock size={13} className="aw-cta-detail-icon" />{store.openingHours}</div>}
+              {(tc?.openingHours || store.openingHours) && <div className="aw-cta-detail"><Clock size={13} className="aw-cta-detail-icon" />{tc?.openingHours || store.openingHours}</div>}
               <div className="aw-cta-detail"><MapPin size={13} className="aw-cta-detail-icon" />Studio Location</div>
               {store.whatsappNumber && <div className="aw-cta-detail"><Phone size={13} className="aw-cta-detail-icon" />{store.whatsappNumber}</div>}
             </div>

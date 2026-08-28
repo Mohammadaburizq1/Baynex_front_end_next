@@ -94,6 +94,7 @@ export const BUSINESS_TYPE_LABELS: Record<BusinessType, string> = {
   real_estate: 'Real Estate',
   services:    'Services',
   catalog:     'Catalogue',
+  clothing:    'Clothing / Fashion',
 };
 
 export const PRODUCT_LABEL: Record<BusinessType, string> = {
@@ -102,4 +103,5 @@ export const PRODUCT_LABEL: Record<BusinessType, string> = {
   real_estate: 'Listings',
   services:    'Services',
   catalog:     'Products',
+  clothing:    'Products',
 };

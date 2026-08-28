@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { DM_Sans, Plus_Jakarta_Sans } from 'next/font/google';
+import { CustomerAuthProvider } from '@/contexts/CustomerAuthContext';
 import './globals.css';
 
 const dmSans = DM_Sans({
@@ -24,7 +25,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" data-scroll-behavior="smooth" className={`${dmSans.variable} ${plusJakarta.variable}`}>
-      <body className="font-sans">{children}</body>
+      <body className="font-sans">
+        <CustomerAuthProvider>{children}</CustomerAuthProvider>
+      </body>
     </html>
   );
 }

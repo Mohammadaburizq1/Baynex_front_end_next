@@ -82,6 +82,7 @@ const WHY = [
 
 export default function ApexRealtyTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
   const [category, setCategory] = useState('All');
   const [navSolid, setNavSolid] = useState(false);
 
@@ -1117,7 +1118,7 @@ export default function ApexRealtyTemplate({ data }: { data: StorefrontData }) {
               We Find<br /><span>Apex</span><br />Properties.
             </h1>
             <p className="ap-hero-desc">
-              {store.description || 'Bold results for buyers, sellers, and investors. No fluff — just expertise, hustle, and deals that close.'}
+              {tc?.heroDescription || store.description || 'Bold results for buyers, sellers, and investors. No fluff — just expertise, hustle, and deals that close.'}
             </p>
             <div className="ap-hero-btns">
               <button className="ap-btn-orange" onClick={() => scrollTo('ap-properties')}>
@@ -1336,7 +1337,7 @@ export default function ApexRealtyTemplate({ data }: { data: StorefrontData }) {
               WhatsApp Us Now
             </a>
             <div className="ap-cta-details">
-              {store.openingHours && <div className="ap-cta-detail"><Clock size={14} className="ap-cta-detail-icon" />{store.openingHours}</div>}
+              {(tc?.openingHours || store.openingHours) && <div className="ap-cta-detail"><Clock size={14} className="ap-cta-detail-icon" />{tc?.openingHours || store.openingHours}</div>}
               <div className="ap-cta-detail"><MapPin size={14} className="ap-cta-detail-icon" />City Central Office</div>
               {store.whatsappNumber && <div className="ap-cta-detail"><Phone size={14} className="ap-cta-detail-icon" />{store.whatsappNumber}</div>}
             </div>

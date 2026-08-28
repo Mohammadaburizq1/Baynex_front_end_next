@@ -1,7 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import { usePathname } from 'next/navigation';
 import type { CuisinePreset } from '@/lib/data/cuisine-presets';
+import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
 
 interface RestaurantNavbarProps {
   storeName: string;
@@ -19,6 +21,8 @@ export default function RestaurantNavbar({
   onCart,
 }: RestaurantNavbarProps) {
   const [activeLink, setActiveLink] = useState('Home');
+  const { user, isAuthenticated } = useCustomerAuth();
+  const pathname = usePathname();
 
   const heading = '#0D102B';
   const body = '#6B6B78';
@@ -146,8 +150,9 @@ export default function RestaurantNavbar({
               </svg>
             </button>
 
-            {/* Login CTA */}
-            <button
+            {/* Login / account CTA */}
+            <a
+              href={isAuthenticated ? '/customer/account' : `/customer/login?redirect=${encodeURIComponent(pathname)}`}
               style={{
                 backgroundColor: primary,
                 color: '#fff',
@@ -159,11 +164,13 @@ export default function RestaurantNavbar({
                 border: 'none',
                 cursor: 'pointer',
                 marginLeft: 4,
+                display: 'inline-flex',
+                alignItems: 'center',
               }}
               className="font-sans transition-opacity hover:opacity-90"
             >
-              Login
-            </button>
+              {isAuthenticated ? (user?.name?.split(' ')[0] || 'Account') : 'Login'}
+            </a>
           </div>
         </div>
 

@@ -22,6 +22,7 @@ const SPARKS = Array.from({ length: 18 }, (_, i) => ({
 
 export default function BurgerJointTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
   const [activeCategory, setActiveCategory] = useState('All');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
@@ -271,7 +272,7 @@ export default function BurgerJointTemplate({ data }: { data: StorefrontData }) 
               opacity: 0,
             }}
           >
-            {store.description}
+            {tc?.heroDescription || store.description}
           </p>
           <button
             onClick={() => document.getElementById('bj-menu')?.scrollIntoView({ behavior: 'smooth' })}

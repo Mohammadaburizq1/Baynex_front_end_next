@@ -7,6 +7,8 @@ import { SAMPLE_DISHES } from '@/lib/data/sample-dishes';
 import DishCard from './DishCard';
 
 interface DishVM {
+  /** Real product id, or null for a sample/placeholder dish that can't be ordered. */
+  id: number | null;
   name: string;
   description: string;
   priceLabel: string;
@@ -28,6 +30,7 @@ function buildDishes(products: PublicProduct[], currencySuffix: string): DishVM[
     if (!p.imageUrl?.trim()) continue;
     const effectivePrice = p.discountPrice ?? p.price;
     out.push({
+      id: p.id,
       name: p.name,
       description: p.description || p.category,
       priceLabel: `${effectivePrice.toFixed(2)} ${currencySuffix}`,
@@ -40,6 +43,7 @@ function buildDishes(products: PublicProduct[], currencySuffix: string): DishVM[
     const s = SAMPLE_DISHES[i];
     if (!out.some((d) => d.name === s.name)) {
       out.push({
+        id: null,
         name: s.name,
         description: s.description,
         priceLabel: `$${s.priceUsd.toFixed(0)}`,
@@ -110,7 +114,8 @@ export default function PopularDishesSection({
                 imageUrl={d.imageUrl}
                 ratingLabel="⭐ 4.9"
                 preset={preset}
-                onAdd={() => onAddProduct?.(i)}
+                disabled={!d.id}
+                onAdd={() => { if (d.id) onAddProduct?.(d.id); }}
               />
             </div>
           ))}
@@ -127,7 +132,8 @@ export default function PopularDishesSection({
               imageUrl={d.imageUrl}
               ratingLabel="⭐ 4.9"
               preset={preset}
-              onAdd={() => onAddProduct?.(i)}
+              disabled={!d.id}
+              onAdd={() => { if (d.id) onAddProduct?.(d.id); }}
             />
           ))}
         </div>
@@ -143,7 +149,8 @@ export default function PopularDishesSection({
               imageUrl={d.imageUrl}
               ratingLabel="⭐ 4.9"
               preset={preset}
-              onAdd={() => onAddProduct?.(i)}
+              disabled={!d.id}
+              onAdd={() => { if (d.id) onAddProduct?.(d.id); }}
             />
           ))}
         </div>

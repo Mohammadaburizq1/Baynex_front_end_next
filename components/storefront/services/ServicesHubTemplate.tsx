@@ -137,6 +137,7 @@ function ServiceCard({
 
 export default function ServicesHubTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
 
   const [activeCategory, setActiveCategory] = useState<string>('All');
 
@@ -188,13 +189,13 @@ export default function ServicesHubTemplate({ data }: { data: StorefrontData }) 
         style={{ background: 'linear-gradient(135deg, #134E4A 0%, #0D9488 100%)' }}
       >
         <p className="font-jakarta font-extrabold text-[11px] tracking-widest text-white/70 uppercase mb-3">
-          PROFESSIONAL SERVICES
+          {tc?.heroEyebrow || 'PROFESSIONAL SERVICES'}
         </p>
         <h1 className="font-jakarta font-extrabold text-[40px] md:text-[52px] text-white leading-tight">
           {store.shopName}
         </h1>
         <p className="font-jakarta text-base text-white/70 mt-3 max-w-lg mx-auto">
-          {store.description || `Expert services tailored to your needs`}
+          {tc?.heroDescription || store.description || `Expert services tailored to your needs`}
         </p>
         <button
           className="bg-white inline-flex rounded-full px-8 py-3 font-jakarta font-bold text-sm mt-6 cursor-pointer hover:opacity-90 transition"
@@ -283,9 +284,9 @@ export default function ServicesHubTemplate({ data }: { data: StorefrontData }) 
         style={{ background: C.ink }}
       >
         <p className="font-jakarta font-extrabold text-xl">{store.shopName}</p>
-        {store.openingHours && (
+        {(tc?.openingHours || store.openingHours) && (
           <p className="font-jakarta text-sm mt-1" style={{ color: 'rgba(255,255,255,0.6)' }}>
-            {store.openingHours}
+            {tc?.openingHours || store.openingHours}
           </p>
         )}
         {store.whatsappNumber && (

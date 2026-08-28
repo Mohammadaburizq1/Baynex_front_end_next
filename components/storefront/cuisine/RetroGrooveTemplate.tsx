@@ -205,6 +205,7 @@ function ProductCard({
 
 export default function RetroGrooveTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
@@ -350,18 +351,18 @@ export default function RetroGrooveTemplate({ data }: { data: StorefrontData }) 
           {store.shopName}
         </h1>
 
-        {store.description && (
+        {(tc?.heroDescription || store.description) && (
           <p
             className={`text-sm mt-2 leading-relaxed max-w-[280px] ${dmSans.className}`}
             style={{ color: 'rgba(253,248,240,0.6)' }}
           >
-            {store.description}
+            {tc?.heroDescription || store.description}
           </p>
         )}
 
         {/* Info pills row */}
         <div className="flex flex-wrap gap-2 mt-4">
-          {store.openingHours && (
+          {(tc?.openingHours || store.openingHours) && (
             <span
               className={`text-[11px] rounded-full px-3 py-1 ${dmSans.className}`}
               style={{
@@ -370,7 +371,7 @@ export default function RetroGrooveTemplate({ data }: { data: StorefrontData }) 
                 border: '1px solid rgba(253,248,240,0.12)',
               }}
             >
-              {store.openingHours}
+              {tc?.openingHours || store.openingHours}
             </span>
           )}
           {store.deliveryInfo && (

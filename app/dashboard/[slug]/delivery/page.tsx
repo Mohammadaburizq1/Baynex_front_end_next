@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus, Pencil, Trash2, MapPin, Clock, ShoppingBag, Truck } from 'lucide-react';
 import { Header } from '@/components/dashboard/Header';
 import { Button } from '@/components/ui/Button';
@@ -10,7 +10,7 @@ import { Input, Select, Toggle } from '@/components/ui/Input';
 import { Modal, ConfirmDialog } from '@/components/ui/Modal';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
-import { mockDeliveryZones } from '@/lib/mock-data';
+import { useStore } from '@/contexts/StoreContext';
 import { formatCurrency } from '@/lib/utils';
 import type { DeliveryZone } from '@/lib/types';
 
@@ -25,12 +25,57 @@ const DEFAULT_ZONE: Omit<DeliveryZone, 'id'> = {
 
 export default function DeliveryPage() {
   const { success, error } = useToast();
-  const [zones, setZones] = useState<DeliveryZone[]>(mockDeliveryZones);
+  const { store } = useStore();
+  const [zones, setZones] = useState<DeliveryZone[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [savingSettings, setSavingSettings] = useState(false);
 
   // General settings
   const [freeThreshold, setFreeThreshold] = useState('0');
   const [defaultTime, setDefaultTime] = useState('30-45 min');
   const [pickupAvailable, setPickupAvailable] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const [{ getDeliveryZones }, { getMyStores }] = await Promise.all([
+          import('@/lib/api/delivery'),
+          import('@/lib/api/stores'),
+        ]);
+        const [apiZones, apiStores] = await Promise.all([getDeliveryZones(), getMyStores()]);
+        if (cancelled) return;
+
+        setZones(
+          apiZones
+            .filter(z => z.storeId === store.id)
+            .map(z => ({
+              id: z.id,
+              name: z.name,
+              areas: z.areas,
+              minOrder: z.minOrder,
+              deliveryFee: z.deliveryFee,
+              estimatedTime: z.estimatedTime ?? '',
+              isActive: z.isActive,
+            })),
+        );
+
+        const apiStore = apiStores.find(s => s.id === store.id);
+        if (apiStore) {
+          setFreeThreshold(String(apiStore.freeDeliveryThreshold ?? 0));
+          setDefaultTime(apiStore.defaultEstimatedTime ?? '30-45 min');
+          setPickupAvailable(apiStore.pickupAvailable ?? true);
+        }
+      } catch {
+        error('Could not load delivery settings.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.id]);
 
   // Zone modal
   const [modalOpen, setModalOpen] = useState(false);
@@ -66,7 +111,7 @@ export default function DeliveryPage() {
     setModalOpen(true);
   }
 
-  function handleSaveZone() {
+  async function handleSaveZone() {
     const errors: { name?: string } = {};
     if (!formData.name.trim()) errors.name = 'Zone name is required';
     if (Object.keys(errors).length) { setFormErrors(errors); return; }
@@ -76,44 +121,114 @@ export default function DeliveryPage() {
       .map(a => a.trim())
       .filter(Boolean);
 
-    if (editingZone) {
-      setZones(prev =>
-        prev.map(z =>
-          z.id === editingZone.id
-            ? { ...editingZone, ...formData, areas: parsedAreas }
-            : z,
-        ),
-      );
-      success('Zone updated successfully');
-    } else {
-      const newZone: DeliveryZone = {
-        id: `zone-${Date.now()}`,
-        ...formData,
-        areas: parsedAreas,
-      };
-      setZones(prev => [...prev, newZone]);
-      success('Zone added successfully');
+    const { createDeliveryZone, updateDeliveryZone } = await import('@/lib/api/delivery');
+    const payload = {
+      storeId: store.id,
+      name: formData.name,
+      areas: parsedAreas,
+      minOrder: formData.minOrder,
+      deliveryFee: formData.deliveryFee,
+      estimatedTime: formData.estimatedTime,
+      isActive: formData.isActive,
+    };
+
+    try {
+      if (editingZone) {
+        const updated = await updateDeliveryZone(editingZone.id, payload);
+        setZones(prev => prev.map(z => (z.id === editingZone.id ? {
+          id: updated.id, name: updated.name, areas: updated.areas,
+          minOrder: updated.minOrder, deliveryFee: updated.deliveryFee,
+          estimatedTime: updated.estimatedTime ?? '', isActive: updated.isActive,
+        } : z)));
+        success('Zone updated successfully');
+      } else {
+        const created = await createDeliveryZone(payload);
+        setZones(prev => [...prev, {
+          id: created.id, name: created.name, areas: created.areas,
+          minOrder: created.minOrder, deliveryFee: created.deliveryFee,
+          estimatedTime: created.estimatedTime ?? '', isActive: created.isActive,
+        }]);
+        success('Zone added successfully');
+      }
+    } catch (e) {
+      error(e instanceof Error ? e.message : 'Could not save zone.');
+      return;
     }
     setModalOpen(false);
   }
 
-  function handleToggleZone(id: string, active: boolean) {
+  async function handleToggleZone(id: string, active: boolean) {
+    const zone = zones.find(z => z.id === id);
+    if (!zone) return;
     setZones(prev => prev.map(z => (z.id === id ? { ...z, isActive: active } : z)));
+    try {
+      const { updateDeliveryZone } = await import('@/lib/api/delivery');
+      await updateDeliveryZone(id, {
+        storeId: store.id,
+        name: zone.name,
+        areas: zone.areas,
+        minOrder: zone.minOrder,
+        deliveryFee: zone.deliveryFee,
+        estimatedTime: zone.estimatedTime,
+        isActive: active,
+      });
+    } catch (e) {
+      setZones(prev => prev.map(z => (z.id === id ? { ...z, isActive: !active } : z)));
+      error(e instanceof Error ? e.message : 'Could not update zone.');
+    }
   }
 
-  function handleDeleteConfirm() {
+  async function handleDeleteConfirm() {
     if (!deleteTarget) return;
     setDeleting(true);
-    setTimeout(() => {
+    try {
+      const { deleteDeliveryZone } = await import('@/lib/api/delivery');
+      await deleteDeliveryZone(deleteTarget.id);
       setZones(prev => prev.filter(z => z.id !== deleteTarget.id));
       setDeleteTarget(null);
-      setDeleting(false);
       success('Zone deleted');
-    }, 400);
+    } catch (e) {
+      error(e instanceof Error ? e.message : 'Could not delete zone.');
+    } finally {
+      setDeleting(false);
+    }
   }
 
-  function handleSaveSettings() {
-    success('Settings saved successfully');
+  async function handleSaveSettings() {
+    setSavingSettings(true);
+    try {
+      const { getMyStores, updateStore } = await import('@/lib/api/stores');
+      const apiStores = await getMyStores();
+      const current = apiStores.find(s => s.id === store.id);
+      if (!current) throw new Error('Store not found.');
+
+      await updateStore(store.id, {
+        name: current.name,
+        slug: current.slug,
+        description: current.description,
+        logoUrl: current.logoUrl,
+        coverImageUrl: current.coverImageUrl,
+        phone: current.phone,
+        whatsappNumber: current.whatsappNumber,
+        email: current.email,
+        address: current.address,
+        city: current.city,
+        country: current.country,
+        primaryColor: current.primaryColor,
+        secondaryColor: current.secondaryColor,
+        categorySlug: current.categorySlug || 'general-store',
+        subCategorySlug: current.subCategorySlug,
+        templateKey: current.templateKey,
+        freeDeliveryThreshold: parseFloat(freeThreshold) || 0,
+        defaultEstimatedTime: defaultTime,
+        pickupAvailable,
+      });
+      success('Settings saved successfully');
+    } catch (e) {
+      error(e instanceof Error ? e.message : 'Could not save settings.');
+    } finally {
+      setSavingSettings(false);
+    }
   }
 
   return (
@@ -141,7 +256,9 @@ export default function DeliveryPage() {
                 </Button>
               </div>
 
-              {zones.length === 0 ? (
+              {loading ? (
+                <div className="px-5 py-10 text-center text-sm text-slate-400">Loading zones…</div>
+              ) : zones.length === 0 ? (
                 <EmptyState
                   icon={<Truck size={32} />}
                   title="No delivery zones"
@@ -259,7 +376,7 @@ export default function DeliveryPage() {
                   </div>
                   <Toggle checked={pickupAvailable} onChange={setPickupAvailable} />
                 </div>
-                <Button fullWidth onClick={handleSaveSettings}>
+                <Button fullWidth onClick={handleSaveSettings} loading={savingSettings}>
                   Save Settings
                 </Button>
               </div>

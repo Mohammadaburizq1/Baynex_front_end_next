@@ -67,6 +67,7 @@ const CLIENTS = ['Veridian Co.', 'Kova Studio', 'Nex Labs', 'Folium', 'Arch & Co
 
 export default function VoltCreativeTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
   const [category, setCategory] = useState('All');
   const [navSolid, setNavSolid] = useState(false);
 
@@ -860,7 +861,7 @@ export default function VoltCreativeTemplate({ data }: { data: StorefrontData })
           <div className={`vc-hero-h1-neon ${outfit.className}`}>BOLD THINGS.</div>
           <div className="vc-hero-bottom">
             <p className="vc-hero-desc">
-              {store.description || 'Branding, web design, digital strategy, and creative production — all under one roof, with zero compromise on quality.'}
+              {tc?.heroDescription || store.description || 'Branding, web design, digital strategy, and creative production — all under one roof, with zero compromise on quality.'}
             </p>
             <div className="vc-hero-btns">
               <button className="vc-btn-neon" onClick={() => scrollTo('vc-services')}>
@@ -1025,7 +1026,7 @@ export default function VoltCreativeTemplate({ data }: { data: StorefrontData })
               Message on WhatsApp
             </a>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {store.openingHours && <div className="vc-cta-detail"><Clock size={12} className="vc-cta-detail-icon" />{store.openingHours}</div>}
+              {(tc?.openingHours || store.openingHours) && <div className="vc-cta-detail"><Clock size={12} className="vc-cta-detail-icon" />{tc?.openingHours || store.openingHours}</div>}
               <div className="vc-cta-detail"><MapPin size={12} className="vc-cta-detail-icon" />Studio Location</div>
               {store.whatsappNumber && <div className="vc-cta-detail"><Phone size={12} className="vc-cta-detail-icon" />{store.whatsappNumber}</div>}
             </div>

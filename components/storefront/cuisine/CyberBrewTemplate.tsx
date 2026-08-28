@@ -117,6 +117,7 @@ function ProductCard({
 
 export default function CyberBrewTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
@@ -247,12 +248,12 @@ export default function CyberBrewTemplate({ data }: { data: StorefrontData }) {
         >
           {store.shopName}
         </h1>
-        {store.description ? (
+        {(tc?.heroDescription || store.description) ? (
           <p
             className={`text-[13px] mt-1 relative ${spaceGrotesk.className}`}
             style={{ color: MUTED }}
           >
-            {store.description}
+            {tc?.heroDescription || store.description}
           </p>
         ) : null}
       </section>

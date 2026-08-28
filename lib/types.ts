@@ -1,8 +1,12 @@
+import type { ClothingTemplateContent } from '@/lib/types/clothing-template-content';
+
 // ── Business / Store ──────────────────────────────────────────────────────────
 
-export type BusinessType = 'retail' | 'restaurant' | 'real_estate' | 'services' | 'catalog';
+export type BusinessType = 'retail' | 'restaurant' | 'real_estate' | 'services' | 'catalog' | 'clothing';
 export type UserRole = 'owner' | 'staff' | 'admin';
-export type StoreStatus = 'active' | 'inactive' | 'pending';
+// 'active' / 'draft' / 'suspended' mirror the backend StoreStatus enum (lowercased).
+// 'inactive' / 'pending' are legacy local-only values used by the (mock) open/closed toggle.
+export type StoreStatus = 'active' | 'draft' | 'suspended' | 'inactive' | 'pending';
 
 export interface Store {
   id: string;
@@ -19,7 +23,11 @@ export interface Store {
   currency: string;
   timezone: string;
   status: StoreStatus;
+  // Whether the store is accepting orders right now — separate from `status` (published/draft).
+  // Local-only preference; the backend has no concept of this yet.
+  acceptingOrders?: boolean;
   theme: string;
+  templateContent?: ClothingTemplateContent;
   createdAt: string;
 }
 

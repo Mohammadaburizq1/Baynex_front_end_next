@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import type { StorefrontData, PublicProduct } from '@/lib/types/store';
-import { ShoppingBag, X } from 'lucide-react';
+import { ShoppingBag } from 'lucide-react';
 import { Playfair_Display } from 'next/font/google';
+import CheckoutDrawer from '@/components/storefront/restaurant-default/CheckoutDrawer';
+import { readCartDraft, clearCartDraft } from '@/lib/utils/cart-draft';
 
 const playfair = Playfair_Display({
   subsets: ['latin'],
@@ -150,155 +152,30 @@ function ProductCard({
   );
 }
 
-// ─── Cart Drawer ──────────────────────────────────────────────────────────────
-
-function CartDrawer({
-  cart,
-  open,
-  currencySuffix,
-  onClose,
-  onRemove,
-}: {
-  cart: CartItem[];
-  open: boolean;
-  currencySuffix: string;
-  onClose: () => void;
-  onRemove: (id: number) => void;
-}) {
-  const total = cart.reduce((sum, item) => {
-    const price = item.product.discountPrice ?? item.product.price;
-    return sum + price * item.qty;
-  }, 0);
-
-  return (
-    <>
-      {/* Overlay */}
-      {open && (
-        <div
-          className="fixed inset-0 bg-black/20 z-40"
-          onClick={onClose}
-          aria-hidden="true"
-        />
-      )}
-
-      {/* Drawer */}
-      <div
-        role="dialog"
-        aria-label="Shopping cart"
-        aria-modal="true"
-        className="fixed inset-y-0 right-0 w-96 bg-white border-l shadow-2xl z-50 flex flex-col"
-        style={{
-          borderColor: COLORS.divider,
-          transform: open ? 'translateX(0)' : 'translateX(100%)',
-          transition: 'transform 300ms ease',
-        }}
-      >
-        {/* Header */}
-        <div
-          className="px-6 py-5 border-b flex justify-between items-center"
-          style={{ borderColor: COLORS.divider }}
-        >
-          <h2 className={`${playfair.className} text-xl`} style={{ color: COLORS.black }}>
-            YOUR BAG
-          </h2>
-          <button
-            onClick={onClose}
-            className="p-1 hover:opacity-60 transition-opacity cursor-pointer"
-            aria-label="Close cart"
-          >
-            <X size={20} color={COLORS.black} />
-          </button>
-        </div>
-
-        {/* Items */}
-        <div className="flex-1 overflow-y-auto px-6">
-          {cart.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full gap-4">
-              <ShoppingBag size={36} color={COLORS.gold} />
-              <p
-                className={`${playfair.className} text-lg`}
-                style={{ color: COLORS.muted }}
-              >
-                Your bag is empty
-              </p>
-            </div>
-          ) : (
-            cart.map((item) => {
-              const price = item.product.discountPrice ?? item.product.price;
-              return (
-                <div
-                  key={item.product.id}
-                  className="flex gap-3 py-4 border-b items-start"
-                  style={{ borderColor: COLORS.divider }}
-                >
-                  {/* Thumbnail */}
-                  <div className="w-20 h-20 flex-shrink-0 overflow-hidden">
-                    <ProductImage imageUrl={item.product.imageUrl} name={item.product.name} />
-                  </div>
-
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <p
-                      className={`${playfair.className} text-base leading-tight`}
-                      style={{ color: COLORS.black }}
-                    >
-                      {item.product.name}
-                    </p>
-                    <p
-                      className="font-jakarta text-sm mt-1"
-                      style={{ color: COLORS.muted }}
-                    >
-                      {price.toLocaleString()} {currencySuffix}
-                      {item.qty > 1 && (
-                        <span className="ml-2 text-xs">× {item.qty}</span>
-                      )}
-                    </p>
-                  </div>
-
-                  {/* Remove */}
-                  <button
-                    onClick={() => onRemove(item.product.id)}
-                    className="flex-shrink-0 p-1 hover:opacity-60 transition-opacity cursor-pointer"
-                    aria-label={`Remove ${item.product.name}`}
-                  >
-                    <X size={14} color={COLORS.muted} />
-                  </button>
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        {/* Footer */}
-        {cart.length > 0 && (
-          <div className="px-6 py-5 border-t" style={{ borderColor: COLORS.divider }}>
-            <div className="flex justify-between items-baseline mb-3">
-              <span className="font-jakarta text-sm" style={{ color: COLORS.muted }}>
-                Total
-              </span>
-              <span className={`${playfair.className} text-xl`} style={{ color: COLORS.black }}>
-                {total.toLocaleString()} {currencySuffix}
-              </span>
-            </div>
-            <button
-              className="font-jakarta font-bold text-base text-white w-full h-14 cursor-pointer hover:opacity-90 transition-opacity"
-              style={{ background: COLORS.black, borderRadius: 0 }}
-            >
-              Proceed to Checkout
-            </button>
-          </div>
-        )}
-      </div>
-    </>
-  );
-}
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function LuxeBoutiqueTemplate({ data }: { data: StorefrontData }) {
+  const tc = data.templateContent;
   const [activeCategory, setActiveCategory] = useState<string>('All');
   const [cartOpen, setCartOpen] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
+
+  // Restore a cart saved before a guest was redirected to /customer/login (see CheckoutDrawer).
+  useEffect(() => {
+    const draft = readCartDraft(data.store.slug);
+    if (!draft || draft.length === 0) return;
+    const restored: CartItem[] = [];
+    for (const d of draft) {
+      const product = data.products.find((p) => String(p.id) === d.productId);
+      if (product) restored.push({ product, qty: d.qty });
+    }
+    if (restored.length > 0) {
+      setCart(restored);
+      setCartOpen(true);
+    }
+    clearCartDraft(data.store.slug);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.store.slug]);
 
   const categories = useMemo(() => {
     const cats = Array.from(new Set(data.products.map((p) => p.category)));
@@ -328,6 +205,16 @@ export default function LuxeBoutiqueTemplate({ data }: { data: StorefrontData })
 
   function removeFromCart(id: number) {
     setCart((prev) => prev.filter((item) => item.product.id !== id));
+  }
+
+  function changeQty(id: number, delta: number) {
+    setCart((prev) =>
+      prev
+        .map((item) =>
+          item.product.id === id ? { ...item, qty: item.qty + delta } : item
+        )
+        .filter((item) => item.qty > 0)
+    );
   }
 
   return (
@@ -368,7 +255,7 @@ export default function LuxeBoutiqueTemplate({ data }: { data: StorefrontData })
           className="font-jakarta text-[16px] mt-4 max-w-lg"
           style={{ color: COLORS.muted }}
         >
-          {data.store.description || `Curated pieces from ${data.store.shopName}`}
+          {tc?.heroDescription || data.store.description || `Curated pieces from ${data.store.shopName}`}
         </p>
         <button
           className="font-jakarta font-semibold text-sm underline mt-6 cursor-pointer hover:opacity-60 transition-opacity"
@@ -436,13 +323,16 @@ export default function LuxeBoutiqueTemplate({ data }: { data: StorefrontData })
         )}
       </main>
 
-      {/* ── Cart Drawer ── */}
-      <CartDrawer
-        cart={cart}
+      {/* ── Checkout ── */}
+      <CheckoutDrawer
         open={cartOpen}
-        currencySuffix={data.store.currencySuffix}
         onClose={() => setCartOpen(false)}
+        storeSlug={data.store.slug}
+        cart={cart}
+        currencySuffix={data.store.currencySuffix}
+        onChangeQty={changeQty}
         onRemove={removeFromCart}
+        onOrderPlaced={() => setCart([])}
       />
 
       {/* ── Footer ── */}
@@ -456,9 +346,9 @@ export default function LuxeBoutiqueTemplate({ data }: { data: StorefrontData })
         >
           {data.store.shopName}
         </p>
-        {data.store.openingHours && (
+        {(tc?.openingHours || data.store.openingHours) && (
           <p className="font-jakarta text-sm mt-2" style={{ color: COLORS.muted }}>
-            {data.store.openingHours}
+            {tc?.openingHours || data.store.openingHours}
           </p>
         )}
         {data.store.deliveryInfo && (

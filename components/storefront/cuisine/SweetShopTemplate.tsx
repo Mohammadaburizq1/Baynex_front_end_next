@@ -26,6 +26,7 @@ const CARD_ACCENT = ['#F9A8D4', '#C4B5FD', '#FDE68A', '#6EE7B7', '#93C5FD'];
 
 export default function SweetShopTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
   const [activeCategory, setActiveCategory] = useState('All');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
@@ -299,7 +300,7 @@ export default function SweetShopTemplate({ data }: { data: StorefrontData }) {
               opacity: 0,
             }}
           >
-            {store.description}
+            {tc?.heroDescription || store.description}
           </p>
           <div
             style={{

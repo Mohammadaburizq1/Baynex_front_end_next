@@ -26,6 +26,7 @@ const CARD_GLOWS = ['#E91E8C', '#9C27B0', '#FF6FCF', '#E91E8C', '#7B1FA2'];
 
 export default function KoreanGrilleTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
   const [activeCategory, setActiveCategory] = useState('All');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
@@ -179,7 +180,7 @@ export default function KoreanGrilleTemplate({ data }: { data: StorefrontData })
           {/* Magenta neon underline */}
           <div style={{ width: 140, height: 3, background: 'linear-gradient(90deg, transparent, #E91E8C, #9C27B0, transparent)', margin: '22px auto', borderRadius: 2 }} />
           <p className={workSans.className} style={{ color: '#7A5A82', fontSize: 18, maxWidth: 460, margin: '0 auto 36px', lineHeight: 1.6, fontWeight: 400, animation: 'heroUp 0.55s 0.38s ease both', opacity: 0 }}>
-            {store.description}
+            {tc?.heroDescription || store.description}
           </p>
           <button onClick={() => document.getElementById('kg-menu')?.scrollIntoView({ behavior: 'smooth' })} style={{ background: 'linear-gradient(135deg, #E91E8C, #9C27B0)', color: 'white', border: 'none', borderRadius: 8, padding: '14px 40px', fontSize: 15, fontWeight: 700, letterSpacing: '0.08em', cursor: 'pointer', fontFamily: workSans.style.fontFamily, animation: 'heroUp 0.55s 0.5s ease both, magentaGlow 2.5s 2s ease infinite', opacity: 0, boxShadow: '0 8px 32px #E91E8C44' }}>
             VIEW MENU

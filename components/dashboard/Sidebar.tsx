@@ -1,15 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import {
   LayoutDashboard, ShoppingBag, ClipboardList, Truck, Package,
   BarChart2, Users, Settings, ChevronLeft, Store, CalendarDays,
-  Home, X,
+  Home, X, Palette, LogOut, Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useStore } from '@/contexts/StoreContext';
+import { signOut } from '@/lib/auth/session';
+import { dashboardPath } from '@/lib/utils/dashboard-path';
 import type { BusinessType } from '@/lib/types';
 
 interface NavItem {
@@ -18,51 +20,79 @@ interface NavItem {
   icon: React.ElementType;
 }
 
-const NAV_ITEMS: Record<BusinessType, NavItem[]> = {
+type NavSection = { label: string; section?: string; icon: React.ElementType };
+
+const NAV_SECTIONS: Record<BusinessType, NavSection[]> = {
   restaurant: [
-    { label: 'Home',      href: '/dashboard',          icon: LayoutDashboard },
-    { label: 'Menu',      href: '/dashboard/products', icon: ShoppingBag      },
-    { label: 'Orders',    href: '/dashboard/orders',   icon: ClipboardList    },
-    { label: 'Delivery',  href: '/dashboard/delivery', icon: Truck            },
-    { label: 'Inventory', href: '/dashboard/inventory',icon: Package          },
-    { label: 'Customers', href: '/dashboard/customers',icon: Users            },
-    { label: 'Reports',   href: '/dashboard/reports',  icon: BarChart2        },
+    { label: 'Home', icon: LayoutDashboard },
+    { label: 'Menu', section: 'products', icon: ShoppingBag },
+    { label: 'Orders', section: 'orders', icon: ClipboardList },
+    { label: 'Delivery', section: 'delivery', icon: Truck },
+    { label: 'Inventory', section: 'inventory', icon: Package },
+    { label: 'Customers', section: 'customers', icon: Users },
+    { label: 'Reports', section: 'reports', icon: BarChart2 },
   ],
   retail: [
-    { label: 'Home',      href: '/dashboard',          icon: LayoutDashboard },
-    { label: 'Products',  href: '/dashboard/products', icon: ShoppingBag     },
-    { label: 'Orders',    href: '/dashboard/orders',   icon: ClipboardList   },
-    { label: 'Delivery',  href: '/dashboard/delivery', icon: Truck           },
-    { label: 'Inventory', href: '/dashboard/inventory',icon: Package         },
-    { label: 'Customers', href: '/dashboard/customers',icon: Users           },
-    { label: 'Reports',   href: '/dashboard/reports',  icon: BarChart2       },
+    { label: 'Home', icon: LayoutDashboard },
+    { label: 'Products', section: 'products', icon: ShoppingBag },
+    { label: 'Orders', section: 'orders', icon: ClipboardList },
+    { label: 'Delivery', section: 'delivery', icon: Truck },
+    { label: 'Inventory', section: 'inventory', icon: Package },
+    { label: 'Customers', section: 'customers', icon: Users },
+    { label: 'Reports', section: 'reports', icon: BarChart2 },
   ],
   real_estate: [
-    { label: 'Home',         href: '/dashboard',          icon: LayoutDashboard },
-    { label: 'Listings',     href: '/dashboard/products', icon: Home            },
-    { label: 'Appointments', href: '/dashboard/delivery', icon: CalendarDays    },
-    { label: 'Customers',    href: '/dashboard/customers',icon: Users           },
-    { label: 'Reports',      href: '/dashboard/reports',  icon: BarChart2       },
+    { label: 'Home', icon: LayoutDashboard },
+    { label: 'Listings', section: 'products', icon: Home },
+    { label: 'Appointments', section: 'delivery', icon: CalendarDays },
+    { label: 'Customers', section: 'customers', icon: Users },
+    { label: 'Reports', section: 'reports', icon: BarChart2 },
   ],
   services: [
-    { label: 'Home',         href: '/dashboard',          icon: LayoutDashboard },
-    { label: 'Services',     href: '/dashboard/products', icon: ShoppingBag     },
-    { label: 'Appointments', href: '/dashboard/delivery', icon: CalendarDays    },
-    { label: 'Orders',       href: '/dashboard/orders',   icon: ClipboardList   },
-    { label: 'Customers',    href: '/dashboard/customers',icon: Users           },
-    { label: 'Reports',      href: '/dashboard/reports',  icon: BarChart2       },
+    { label: 'Home', icon: LayoutDashboard },
+    { label: 'Services', section: 'products', icon: ShoppingBag },
+    { label: 'Appointments', section: 'delivery', icon: CalendarDays },
+    { label: 'Orders', section: 'orders', icon: ClipboardList },
+    { label: 'Customers', section: 'customers', icon: Users },
+    { label: 'Reports', section: 'reports', icon: BarChart2 },
   ],
   catalog: [
-    { label: 'Home',      href: '/dashboard',          icon: LayoutDashboard },
-    { label: 'Products',  href: '/dashboard/products', icon: ShoppingBag     },
-    { label: 'Customers', href: '/dashboard/customers',icon: Users           },
-    { label: 'Reports',   href: '/dashboard/reports',  icon: BarChart2       },
+    { label: 'Home', icon: LayoutDashboard },
+    { label: 'Products', section: 'products', icon: ShoppingBag },
+    { label: 'Customers', section: 'customers', icon: Users },
+    { label: 'Reports', section: 'reports', icon: BarChart2 },
+  ],
+  clothing: [
+    { label: 'Home', icon: LayoutDashboard },
+    { label: 'Products', section: 'products', icon: ShoppingBag },
+    { label: 'Orders', section: 'orders', icon: ClipboardList },
+    { label: 'Customers', section: 'customers', icon: Users },
+    { label: 'Reports', section: 'reports', icon: BarChart2 },
   ],
 };
 
-const BOTTOM_ITEMS: NavItem[] = [
-  { label: 'Store Settings', href: '/dashboard/store-settings', icon: Settings },
-];
+function buildNavItems(businessType: BusinessType, slug: string): NavItem[] {
+  const sections = NAV_SECTIONS[businessType] ?? NAV_SECTIONS.retail;
+  return sections.map(({ label, section, icon }) => ({
+    label,
+    href: dashboardPath(slug, section),
+    icon,
+  }));
+}
+
+function bottomNavItems(businessType: BusinessType, slug: string): NavItem[] {
+  const items: NavItem[] = [
+    { label: 'Store Settings', href: dashboardPath(slug, 'store-settings'), icon: Settings },
+  ];
+  if (businessType === 'clothing') {
+    items.unshift({
+      label: 'Customize Storefront',
+      href: dashboardPath(slug, 'customize-storefront'),
+      icon: Palette,
+    });
+  }
+  return items;
+}
 
 interface SidebarContentProps {
   onClose?: () => void;
@@ -72,15 +102,29 @@ interface SidebarContentProps {
 
 function SidebarContent({ onClose, collapsed, onToggleCollapse }: SidebarContentProps) {
   const pathname = usePathname();
-  const { store, businessType } = useStore();
-  const navItems = NAV_ITEMS[businessType] ?? NAV_ITEMS.retail;
+  const router = useRouter();
+  const { store, businessType, dashboardSlug } = useStore();
+  const [loggingOut, setLoggingOut] = useState(false);
+  const navItems = buildNavItems(businessType, dashboardSlug);
+  const homeHref = dashboardPath(dashboardSlug);
 
   const isActive = (href: string) =>
-    href === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(href);
+    href === homeHref ? pathname === homeHref : pathname.startsWith(href);
+
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    onClose?.();
+    try {
+      await signOut();
+    } finally {
+      router.push('/login');
+      router.refresh();
+    }
+  };
 
   return (
     <div className="flex flex-col h-full">
-      {/* Logo / Store name */}
       <div className={cn(
         'flex items-center justify-between px-4 py-4 border-b border-sidebar-border min-h-[64px]',
         collapsed && 'px-3 justify-center',
@@ -92,7 +136,7 @@ function SidebarContent({ onClose, collapsed, onToggleCollapse }: SidebarContent
             </div>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-white truncate">{store.name}</p>
-              <p className="text-2xs text-sidebar-text truncate capitalize">{store.businessType.replace('_', ' ')}</p>
+              <p className="text-2xs text-sidebar-text truncate">{dashboardSlug}</p>
             </div>
           </div>
         )}
@@ -117,7 +161,6 @@ function SidebarContent({ onClose, collapsed, onToggleCollapse }: SidebarContent
         )}
       </div>
 
-      {/* Main nav */}
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
         {navItems.map(item => {
           const Icon = item.icon;
@@ -143,9 +186,8 @@ function SidebarContent({ onClose, collapsed, onToggleCollapse }: SidebarContent
         })}
       </nav>
 
-      {/* Bottom: Settings */}
       <div className="py-3 px-2 border-t border-sidebar-border space-y-0.5">
-        {BOTTOM_ITEMS.map(item => {
+        {bottomNavItems(businessType, dashboardSlug).map(item => {
           const Icon = item.icon;
           const active = isActive(item.href);
           return (
@@ -167,12 +209,28 @@ function SidebarContent({ onClose, collapsed, onToggleCollapse }: SidebarContent
             </Link>
           );
         })}
+        <button
+          type="button"
+          onClick={handleLogout}
+          disabled={loggingOut}
+          title={collapsed ? 'Log out' : undefined}
+          className={cn(
+            'flex items-center gap-3 rounded-lg transition-colors duration-150 cursor-pointer w-full',
+            'text-sidebar-text hover:bg-red-500/10 hover:text-red-300 disabled:opacity-60',
+            collapsed ? 'px-2 py-2.5 justify-center' : 'px-3 py-2.5',
+          )}
+        >
+          {loggingOut
+            ? <Loader2 size={18} className="shrink-0 animate-spin" />
+            : <LogOut size={18} className="shrink-0" />}
+          {!collapsed && (
+            <span className="text-sm font-medium">{loggingOut ? 'Logging out…' : 'Log out'}</span>
+          )}
+        </button>
       </div>
     </div>
   );
 }
-
-// ── Desktop sidebar ───────────────────────────────────────────────────────────
 
 export function DesktopSidebar() {
   const [collapsed, setCollapsed] = useState(false);
@@ -190,8 +248,6 @@ export function DesktopSidebar() {
     </aside>
   );
 }
-
-// ── Mobile drawer ─────────────────────────────────────────────────────────────
 
 export function MobileSidebar() {
   const { sidebarOpen, setSidebarOpen } = useStore();
@@ -211,4 +267,3 @@ export function MobileSidebar() {
     </>
   );
 }
-

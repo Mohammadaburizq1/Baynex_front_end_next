@@ -23,6 +23,7 @@ const CANDLES = Array.from({ length: 12 }, (_, i) => ({
 
 export default function FrenchBrasserieTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
   const [activeCategory, setActiveCategory] = useState('All');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
@@ -193,7 +194,7 @@ export default function FrenchBrasserieTemplate({ data }: { data: StorefrontData
           </div>
 
           <p className={sourceSans.className} style={{ color: '#4A6A4E', fontSize: 18, maxWidth: 460, margin: '0 auto 40px', lineHeight: 1.7, fontWeight: 300, animation: 'fadeUp 0.6s 0.42s ease both', opacity: 0 }}>
-            {store.description}
+            {tc?.heroDescription || store.description}
           </p>
           <button onClick={() => document.getElementById('fb-menu')?.scrollIntoView({ behavior: 'smooth' })} style={{ background: 'transparent', border: '1px solid #D4AF37', color: '#D4AF37', borderRadius: 4, padding: '14px 44px', fontSize: 15, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', cursor: 'pointer', fontFamily: sourceSans.style.fontFamily, animation: 'fadeUp 0.6s 0.54s ease both, goldPulse 3s 2s ease infinite', opacity: 0 }}>
             Voir la Carte

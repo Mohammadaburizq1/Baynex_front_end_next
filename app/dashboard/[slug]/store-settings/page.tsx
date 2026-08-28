@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { Store, Tag, Globe, Power, Palette } from 'lucide-react';
 import { Header } from '@/components/dashboard/Header';
 import { Button } from '@/components/ui/Button';
@@ -9,6 +10,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Input, Select, Textarea, Toggle } from '@/components/ui/Input';
 import { useToast } from '@/components/ui/Toast';
 import { useStore } from '@/contexts/StoreContext';
+import { dashboardPath } from '@/lib/utils/dashboard-path';
 import { cn } from '@/lib/utils';
 
 const BUSINESS_TYPE_OPTIONS = [
@@ -36,8 +38,8 @@ const TIMEZONE_OPTIONS = [
 ];
 
 export default function StoreSettingsPage() {
-  const { store, updateStore } = useStore();
-  const { success } = useToast();
+  const { store, updateStore, dashboardSlug } = useStore();
+  const { success, error: toastError } = useToast();
 
   // Section 1: Store Information
   const [infoForm, setInfoForm] = useState({
@@ -75,11 +77,29 @@ export default function StoreSettingsPage() {
       currency: store.currency ?? 'MYR',
       timezone: store.timezone ?? 'Asia/Kuala_Lumpur',
     });
-    setStoreOpen(store.status === 'active');
+    setStoreOpen(store.acceptingOrders ?? true);
     setPublished(store.status === 'active');
   }, [store]);
 
-  function handleSaveInfo() {
+  const [savingInfo, setSavingInfo] = useState(false);
+  const [savingBiz, setSavingBiz] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [noProductsError, setNoProductsError] = useState(false);
+
+  async function handleSaveInfo() {
+    setSavingInfo(true);
+    try {
+      const { updateStore: apiUpdate } = await import('@/lib/api/stores');
+      await apiUpdate(store.id, {
+        name: infoForm.name,
+        slug: store.slug,
+        description: infoForm.description,
+        phone: infoForm.phone,
+        email: infoForm.email,
+        address: infoForm.address,
+        categorySlug: store.category || 'general-store',
+      });
+    } catch { /* persist locally even if API fails */ }
     updateStore({
       name: infoForm.name,
       description: infoForm.description,
@@ -87,39 +107,62 @@ export default function StoreSettingsPage() {
       email: infoForm.email,
       address: infoForm.address,
     });
+    setSavingInfo(false);
     success('Store information saved successfully');
   }
 
-  function handleSaveBiz() {
+  async function handleSaveBiz() {
+    setSavingBiz(true);
     updateStore({
       businessType: bizForm.businessType as any,
       category: bizForm.category,
       currency: bizForm.currency,
       timezone: bizForm.timezone,
     });
+    setSavingBiz(false);
     success('Business settings saved successfully');
   }
 
   function handleToggleOpen(open: boolean) {
     setStoreOpen(open);
-    updateStore({ status: open ? 'active' : 'inactive' });
+    updateStore({ acceptingOrders: open });
     success(open ? 'Store is now open and accepting orders' : 'Store closed');
   }
 
-  function handleTogglePublish(pub: boolean) {
-    setPublished(pub);
-    if (pub) {
-      setStoreOpen(true);
-      updateStore({ status: 'active' });
+  async function handleTogglePublish(pub: boolean) {
+    if (store.id.startsWith('local-')) {
+      toastError('Save your store to the server first (see the banner on your dashboard home), then you can publish it.');
+      return;
     }
-    success(pub ? 'Store published and visible to customers' : 'Store unpublished');
+    setPublished(pub);
+    setPublishing(true);
+    setNoProductsError(false);
+    try {
+      const { setStorePublished, isNoProductsPublishError } = await import('@/lib/utils/store-publish');
+      try {
+        await setStorePublished(store, pub);
+        updateStore({ status: pub ? 'active' : 'draft' });
+        success(pub ? 'Store published and visible to customers' : 'Store unpublished');
+      } catch (e: any) {
+        setPublished(!pub);
+        if (isNoProductsPublishError(e)) {
+          setNoProductsError(true);
+          toastError('Add at least one product before you can publish your store.');
+        } else {
+          toastError(e?.message ?? 'Could not update publish status. Please try again.');
+        }
+      }
+    } finally {
+      setPublishing(false);
+    }
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <>
       <Header title="Store Settings" subtitle="Configure your store" />
 
-      <div className="p-5 lg:p-6 max-w-3xl mx-auto space-y-6">
+      <main className="flex-1 overflow-y-auto bg-slate-50">
+        <div className="p-5 lg:p-6 max-w-3xl mx-auto space-y-6 pb-8">
 
         {/* ── Section 1: Store Information ──────────────────────────── */}
         <Card>
@@ -170,7 +213,7 @@ export default function StoreSettingsPage() {
               rows={2}
             />
             <div className="flex justify-end pt-1">
-              <Button onClick={handleSaveInfo}>Save Changes</Button>
+              <Button onClick={handleSaveInfo} loading={savingInfo}>Save Changes</Button>
             </div>
           </div>
         </Card>
@@ -215,7 +258,7 @@ export default function StoreSettingsPage() {
               />
             </div>
             <div className="flex justify-end pt-1">
-              <Button onClick={handleSaveBiz}>Save Changes</Button>
+              <Button onClick={handleSaveBiz} loading={savingBiz}>Save Changes</Button>
             </div>
           </div>
         </Card>
@@ -270,17 +313,47 @@ export default function StoreSettingsPage() {
                 <p className="text-xs text-slate-500 mt-0.5 max-w-xs">
                   Make your store publicly accessible via your ShopLink URL. Unpublishing hides it from all customers.
                 </p>
+                {noProductsError && (
+                  <p className="text-xs text-red-600 mt-1.5">
+                    Add at least one product before publishing —{' '}
+                    <Link href={dashboardPath(dashboardSlug, 'products')} className="font-semibold underline">
+                      go to Products
+                    </Link>
+                  </p>
+                )}
               </div>
               <Toggle
                 checked={published}
                 onChange={handleTogglePublish}
+                disabled={publishing}
                 aria-label="Toggle store published"
               />
             </div>
           </div>
         </Card>
 
-        {/* ── Section 4: Appearance (Coming Soon) ───────────────────── */}
+        {/* ── Section 4: Storefront customization (clothing) ───────── */}
+        {(store.businessType === 'clothing' || store.theme?.startsWith('clothing-')) && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-violet-100 rounded-lg">
+                  <Palette size={16} className="text-violet-600" />
+                </div>
+                <CardTitle>Storefront appearance</CardTitle>
+              </div>
+              <CardDescription>
+                Edit hero text, images, testimonials, newsletter copy, and every section on your clothing template.
+              </CardDescription>
+            </CardHeader>
+            <a href={dashboardPath(dashboardSlug, 'customize-storefront')}>
+              <Button className="w-full">Customize template content</Button>
+            </a>
+          </Card>
+        )}
+
+        {/* ── Section 5: Appearance (other types) ───────────────────── */}
+        {store.businessType !== 'clothing' && !store.theme?.startsWith('clothing-') && (
         <Card className="opacity-60 pointer-events-none select-none">
           <CardHeader>
             <div className="flex items-center gap-2">
@@ -305,8 +378,10 @@ export default function StoreSettingsPage() {
             ))}
           </div>
         </Card>
+        )}
 
-      </div>
-    </div>
+        </div>
+      </main>
+    </>
   );
 }

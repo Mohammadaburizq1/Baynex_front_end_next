@@ -19,7 +19,7 @@ const PARTICLES = Array.from({ length: 20 }, (_, i) => {
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('merchant@example.com');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
@@ -37,9 +37,9 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmedEmail = email.trim();
-    if (!trimmedEmail || !trimmedEmail.includes('@') || !trimmedEmail.includes('.')) {
-      setError('Enter a valid email address.');
+    const trimmedId = identifier.trim();
+    if (!trimmedId) {
+      setError('Enter your email or phone number.');
       triggerShake();
       return;
     }
@@ -51,12 +51,11 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      // TODO: Replace with actual API call to /api/auth/login
-      await new Promise(resolve => setTimeout(resolve, 700));
-      localStorage.setItem('authToken', 'demo-token');
-      router.push('/dashboard/products');
-    } catch {
-      setError('Login failed. Please check your credentials.');
+      const { login } = await import('@/lib/api/auth');
+      await login(trimmedId, password);
+      router.push('/dashboard');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Login failed. Please check your credentials.');
       triggerShake();
     } finally {
       setLoading(false);
@@ -178,24 +177,31 @@ export default function LoginPage() {
 
               <form onSubmit={handleLogin} noValidate>
 
-                {/* Email field */}
+                {/* Email or Phone field */}
                 <div className="mb-4 opacity-0 animate-fade-in animate-stagger-1">
                   <label className="block text-sm font-semibold mb-1.5" style={{ color: '#475569' }}>
-                    Email
+                    Email or Phone
                   </label>
                   <div className="relative">
                     <span className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#475569' }}>
-                      <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="2" y="4" width="20" height="16" rx="2" />
-                        <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
-                      </svg>
+                      {identifier.includes('@') ? (
+                        <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="2" y="4" width="20" height="16" rx="2" />
+                          <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+                        </svg>
+                      ) : (
+                        <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.23h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.82a16 16 0 0 0 6.13 6.13l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
+                        </svg>
+                      )}
                     </span>
                     <input
-                      type="email"
-                      value={email}
-                      onChange={e => setEmail(e.target.value)}
-                      placeholder="you@example.com"
+                      type="text"
+                      value={identifier}
+                      onChange={e => setIdentifier(e.target.value)}
+                      placeholder="you@example.com or +60 12-345 6789"
                       disabled={loading}
+                      autoComplete="username"
                       className="w-full pl-10 pr-4 py-3.5 text-sm rounded-xl border transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-[#6366F1] focus:border-[#6366F1] disabled:opacity-60"
                       style={{ borderColor: '#E2E8F0', background: 'rgba(255,255,255,0.92)', color: '#1E1B4B' }}
                     />

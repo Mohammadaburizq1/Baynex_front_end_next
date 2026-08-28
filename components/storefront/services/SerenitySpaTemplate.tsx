@@ -310,6 +310,7 @@ function ServiceCard({
 
 export default function SerenitySpaTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
 
   const [bookingList, setBookingList] = useState<Set<number>>(new Set());
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -400,7 +401,7 @@ export default function SerenitySpaTemplate({ data }: { data: StorefrontData }) 
           className={`${cormorant.className} italic text-lg mt-3 max-w-md mx-auto`}
           style={{ color: C.muted }}
         >
-          {store.description || 'Relax, restore, and renew your spirit'}
+          {tc?.heroDescription || store.description || 'Relax, restore, and renew your spirit'}
         </p>
         <button
           onClick={() => bookingList.size > 0 && setModalOpen(true)}

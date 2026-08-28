@@ -146,6 +146,7 @@ function ProductCard({
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function CatalogInquiryTemplate({ data }: { data: StorefrontData }) {
+  const tc = data.templateContent;
   const [activeCategory, setActiveCategory] = useState<string>('All');
 
   const categories = useMemo(() => {
@@ -221,12 +222,12 @@ export default function CatalogInquiryTemplate({ data }: { data: StorefrontData 
         >
           {data.store.shopName}
         </h1>
-        {data.store.description && (
+        {(tc?.heroDescription || data.store.description) && (
           <p
             className="font-jakarta text-base mt-4 max-w-xl mx-auto"
             style={{ color: COLORS.muted }}
           >
-            {data.store.description}
+            {tc?.heroDescription || data.store.description}
           </p>
         )}
       </section>
@@ -292,9 +293,9 @@ export default function CatalogInquiryTemplate({ data }: { data: StorefrontData 
         >
           {data.store.shopName}
         </p>
-        {data.store.openingHours && (
+        {(tc?.openingHours || data.store.openingHours) && (
           <p className="font-jakarta text-sm mt-1" style={{ color: COLORS.muted }}>
-            {data.store.openingHours}
+            {tc?.openingHours || data.store.openingHours}
           </p>
         )}
         {data.store.deliveryInfo && (

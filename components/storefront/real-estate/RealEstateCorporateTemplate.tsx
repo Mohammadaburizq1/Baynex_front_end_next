@@ -93,6 +93,7 @@ const WHY = [
 
 export default function RealEstateCorporateTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
   const [category, setCategory] = useState('All');
   const [navSolid, setNavSolid] = useState(false);
 
@@ -1074,7 +1075,7 @@ export default function RealEstateCorporateTemplate({ data }: { data: Storefront
             Discover Spaces<br />Worth Calling Home
           </h1>
           <p className="rc-hero-desc">
-            {store.description || 'A trusted partner in luxury and residential real estate. We connect exceptional people with extraordinary properties.'}
+            {tc?.heroDescription || store.description || 'A trusted partner in luxury and residential real estate. We connect exceptional people with extraordinary properties.'}
           </p>
           <div className="rc-hero-btns">
             <button className="rc-btn-primary" onClick={() => scrollTo('rc-properties')}>
@@ -1371,10 +1372,10 @@ export default function RealEstateCorporateTemplate({ data }: { data: Storefront
               Message Us on WhatsApp
             </a>
             <div className="rc-cta-details">
-              {store.openingHours && (
+              {(tc?.openingHours || store.openingHours) && (
                 <div className="rc-cta-detail">
                   <Clock size={14} className="rc-cta-detail-icon" />
-                  {store.openingHours}
+                  {tc?.openingHours || store.openingHours}
                 </div>
               )}
               <div className="rc-cta-detail">

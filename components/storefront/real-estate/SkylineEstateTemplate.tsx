@@ -80,6 +80,7 @@ const FALLBACK_IMAGE =
 
 export default function SkylineEstateTemplate({ data }: SkylineEstateTemplateProps) {
   const { store, products } = data;
+  const tc = data.templateContent;
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const sectionRefs = useRef<(HTMLElement | null)[]>([]);

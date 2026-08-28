@@ -1,9 +1,45 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, Loader2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { dashboardPath } from '@/lib/utils/dashboard-path';
+import { initStoreData } from '@/lib/utils/store-scoped-data';
+
+// A draft older than this is replayed against a category/slug landscape that may no longer be
+// valid — clear it and send the merchant through a fresh onboarding run instead.
+const DRAFT_TTL_MS = 48 * 60 * 60 * 1000; // 48 hours
+
+interface StoreDraft {
+  name: string;
+  slug: string;
+  category: string;
+  description?: string;
+  phone?: string;
+  address?: string;
+  theme?: string;
+  logo?: string;
+  coverImage?: string;
+  idempotencyKey?: string;
+  savedAt?: number;
+}
+
+function readDraft(): StoreDraft | null {
+  try {
+    const raw = localStorage.getItem('shoplink_store');
+    if (!raw) return null;
+    return JSON.parse(raw) as StoreDraft;
+  } catch {
+    return null;
+  }
+}
+
+function clearDraft() {
+  try {
+    localStorage.removeItem('shoplink_store');
+    localStorage.removeItem('sl_selected_template');
+  } catch { /* ignore */ }
+}
 
 // ── Theme color presets (matching Flutter ThemePalette) ────────────────────
 const THEME_COLORS = [
@@ -38,12 +74,91 @@ export default function OnboardingFollowUpPage() {
   const [selectedColor, setSelectedColor] = useState('indigo');
   const [description, setDescription] = useState('');
   const [saving, setSaving] = useState(false);
+  const [reconciling, setReconciling] = useState(true);
+  const [draft, setDraft] = useState<StoreDraft | null>(null);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  // Reconcile against the backend before ever showing the form: a lost response doesn't mean a
+  // lost store — check whether this draft's store already exists first, and don't replay if so.
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const found = readDraft();
+      if (!found) {
+        router.replace('/onboarding');
+        return;
+      }
+      if (!found.savedAt || Date.now() - found.savedAt > DRAFT_TTL_MS) {
+        clearDraft();
+        router.replace('/onboarding');
+        return;
+      }
+
+      try {
+        const { getMyStores } = await import('@/lib/api/stores');
+        const stores = await getMyStores();
+        const existing = stores.find(s => s.slug === found.slug);
+        if (existing) {
+          clearDraft();
+          router.replace(dashboardPath(existing.slug));
+          return;
+        }
+      } catch {
+        // Couldn't reach the backend to check — fall through to the normal form so the merchant
+        // can still retry manually; the idempotency key still protects against a duplicate.
+      }
+
+      if (!cancelled) {
+        setDraft(found);
+        setReconciling(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleCreate = async () => {
+    if (!draft) return;
+    setErrorMsg('');
     setSaving(true);
     try {
-      await new Promise(r => setTimeout(r, 1200));
-      router.push('/dashboard');
+      const { createStore } = await import('@/lib/api/stores');
+      const payload = {
+        name: draft.name || 'My Store',
+        slug: draft.slug,
+        categorySlug: draft.category,
+        description: description || draft.description,
+        phone: draft.phone,
+        whatsappNumber: draft.phone,
+        address: draft.address,
+        templateKey: draft.theme,
+        logoUrl: draft.logo,
+        coverImageUrl: draft.coverImage,
+        primaryColor: THEME_COLORS.find(c => c.id === selectedColor)?.color,
+      };
+      await createStore(payload, draft.idempotencyKey);
+      clearDraft();
+      initStoreData(draft.slug);
+      router.push(dashboardPath(draft.slug));
+    } catch (e: any) {
+      const msg: string = e?.message ?? '';
+      if (msg.toLowerCase().includes('slug already exists')) {
+        // Someone else's request (or an earlier attempt of ours) beat us to it — reconcile
+        // instead of surfacing a dead-end error.
+        try {
+          const { getMyStores } = await import('@/lib/api/stores');
+          const stores = await getMyStores();
+          const existing = stores.find(s => s.slug === draft.slug);
+          if (existing) {
+            clearDraft();
+            router.push(dashboardPath(existing.slug));
+            return;
+          }
+        } catch { /* fall through to showing the error below */ }
+      }
+      setErrorMsg(msg || 'Could not create your store. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -89,6 +204,22 @@ export default function OnboardingFollowUpPage() {
       <main className="relative z-10 min-h-dvh pt-14 pb-6 px-4 flex flex-col">
         <div className="w-full max-w-[720px] mx-auto flex-1 flex flex-col pt-4">
 
+          {reconciling || !draft ? (
+            <div
+              className="rounded-[20px] border p-10 flex-1 flex flex-col items-center justify-center gap-4"
+              style={{
+                background: 'rgba(20, 23, 31, 0.97)',
+                borderColor: '#2A2F3D',
+                boxShadow: '0 12px 32px rgba(0,0,0,0.25)',
+              }}
+            >
+              <Loader2 size={28} className="animate-spin" style={{ color: '#818CF8' }} />
+              <p className="text-sm font-semibold" style={{ color: '#B4C0D0' }}>
+                Checking your account…
+              </p>
+            </div>
+          ) : (
+          <>
           {/* Glass panel */}
           <div
             className="rounded-[20px] border p-5 md:p-7 mb-3 flex-1"
@@ -202,6 +333,15 @@ export default function OnboardingFollowUpPage() {
                 </p>
               </div>
             </div>
+
+            {errorMsg && (
+              <div
+                className="mt-5 px-4 py-3 rounded-xl text-sm font-medium border"
+                style={{ background: 'rgba(239,68,68,0.10)', borderColor: 'rgba(239,68,68,0.30)', color: '#FCA5A5' }}
+              >
+                {errorMsg}
+              </div>
+            )}
           </div>
 
           {/* Navigation */}
@@ -235,6 +375,8 @@ export default function OnboardingFollowUpPage() {
               </button>
             </div>
           </div>
+          </>
+          )}
 
         </div>
       </main>

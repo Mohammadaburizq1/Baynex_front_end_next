@@ -21,6 +21,7 @@ const C = {
 
 export default function DarkAcademiaTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
   const [cart, setCart] = useState<Record<number, number>>({});
   const [activeCategory, setActiveCategory] = useState('All');
 
@@ -147,7 +148,7 @@ export default function DarkAcademiaTemplate({ data }: { data: StorefrontData })
           </div>
 
           <p className={`${garamond.className} ink-in text-lg sm:text-xl italic mb-10 max-w-md leading-relaxed`} style={{ animationDelay: '0.45s', color: C.parchDim }}>
-            "{store.description}"
+            "{tc?.heroDescription || store.description}"
           </p>
 
           <button

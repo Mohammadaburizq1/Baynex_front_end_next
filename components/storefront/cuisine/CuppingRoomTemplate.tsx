@@ -248,6 +248,7 @@ function CheckoutPanel({
 
 export default function CuppingRoomTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);

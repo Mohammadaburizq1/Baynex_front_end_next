@@ -10,6 +10,7 @@ const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], weight: ['300', '400', 
 
 export default function NeonDripTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
   const [cart, setCart] = useState<Record<number, number>>({});
   const [glitch, setGlitch] = useState(false);
   const [activeCategory, setActiveCategory] = useState('All');
@@ -180,7 +181,7 @@ export default function NeonDripTemplate({ data }: { data: StorefrontData }) {
           </div>
 
           <p className="text-base sm:text-lg mb-12 max-w-sm" style={{ color:'rgba(232,232,255,0.5)' }}>
-            {store.description}
+            {tc?.heroDescription || store.description}
           </p>
 
           {/* Floating cups with steam */}
@@ -249,7 +250,7 @@ export default function NeonDripTemplate({ data }: { data: StorefrontData }) {
               <span className="np" style={{ color:'#FF3CAC' }}>HOT</span>
             </h2>
             <p className="mt-3 text-xs" style={{ color:'rgba(232,232,255,0.35)' }}>
-              {store.openingHours} · {store.deliveryInfo}
+              {tc?.openingHours || store.openingHours} · {store.deliveryInfo}
             </p>
           </div>
 

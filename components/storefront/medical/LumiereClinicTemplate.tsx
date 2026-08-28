@@ -72,6 +72,7 @@ const SVC_ICONS = [Sparkles, Zap, Droplets, Sun, FlaskConical, Heart];
 
 export default function LumiereClinicTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
   const [navSolid, setNavSolid] = useState(false);
   const [activeT, setActiveT] = useState(0);
   const [category, setCategory] = useState('All');
@@ -542,7 +543,7 @@ export default function LumiereClinicTemplate({ data }: { data: StorefrontData }
             </h1>
             <div className="lc-gold-rule" />
             <p className="lc-hero-desc">
-              {store.description || 'Clinician-led aesthetic treatments combining medical precision with an artist\'s eye. Subtle, natural, transformative.'}
+              {tc?.heroDescription || store.description || 'Clinician-led aesthetic treatments combining medical precision with an artist\'s eye. Subtle, natural, transformative.'}
             </p>
             <div className="lc-hero-btns">
               <button className="lc-btn-gold" onClick={() => scrollTo('lc-services')}>
@@ -716,7 +717,7 @@ export default function LumiereClinicTemplate({ data }: { data: StorefrontData }
               Book a Consultation
             </a>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-              {store.openingHours && <div className="lc-cta-detail"><Clock size={13} className="lc-cta-detail-icon" />{store.openingHours}</div>}
+              {(tc?.openingHours || store.openingHours) && <div className="lc-cta-detail"><Clock size={13} className="lc-cta-detail-icon" />{tc?.openingHours || store.openingHours}</div>}
               <div className="lc-cta-detail"><MapPin size={13} className="lc-cta-detail-icon" />Private Clinic Location</div>
               {store.whatsappNumber && <div className="lc-cta-detail"><Phone size={13} className="lc-cta-detail-icon" />{store.whatsappNumber}</div>}
             </div>

@@ -9,6 +9,7 @@ interface DishCardProps {
   ratingLabel?: string;
   preset: CuisinePreset;
   onAdd: () => void;
+  disabled?: boolean;
 }
 
 export default function DishCard({
@@ -19,6 +20,7 @@ export default function DishCard({
   ratingLabel,
   preset,
   onAdd,
+  disabled,
 }: DishCardProps) {
   const primary = preset.primary;
   const heading = '#0D102B';
@@ -128,13 +130,15 @@ export default function DishCard({
         </span>
         <button
           onClick={onAdd}
+          disabled={disabled}
           style={{
             backgroundColor: primary,
             borderRadius: 12,
             border: 'none',
             width: 42,
             height: 42,
-            cursor: 'pointer',
+            cursor: disabled ? 'not-allowed' : 'pointer',
+            opacity: disabled ? 0.4 : 1,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',

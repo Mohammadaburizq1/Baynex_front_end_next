@@ -22,6 +22,7 @@ const STEAM_WISPS = Array.from({ length: 14 }, (_, i) => ({
 
 export default function RamenNightTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
   const [activeCategory, setActiveCategory] = useState('All');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
@@ -163,7 +164,7 @@ export default function RamenNightTemplate({ data }: { data: StorefrontData }) {
             <div style={{ position: 'absolute', inset: 0, background: '#DC2626', animation: 'redBrush 1.2s 0.8s ease both', width: 0 }} />
           </div>
           <p className={lato.className} style={{ color: '#6B6880', fontSize: 18, maxWidth: 440, margin: '0 auto 36px', lineHeight: 1.6, fontWeight: 300, animation: 'heroReveal 0.7s 0.44s ease both', opacity: 0 }}>
-            {store.description}
+            {tc?.heroDescription || store.description}
           </p>
           <button onClick={() => document.getElementById('rn-menu')?.scrollIntoView({ behavior: 'smooth' })} style={{ background: '#DC2626', color: 'white', border: 'none', borderRadius: 8, padding: '14px 40px', fontSize: 15, fontWeight: 700, letterSpacing: '0.08em', cursor: 'pointer', fontFamily: lato.style.fontFamily, animation: 'heroReveal 0.7s 0.56s ease both', opacity: 0 } as React.CSSProperties}>
             TONIGHT'S MENU

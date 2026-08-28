@@ -189,6 +189,7 @@ function MenuCard({
 
 export default function BlossomCafeTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
@@ -307,23 +308,23 @@ export default function BlossomCafeTemplate({ data }: { data: StorefrontData }) 
           {store.shopName}
         </h1>
 
-        {store.description && (
+        {(tc?.heroDescription || store.description) && (
           <p
             className={`text-[13px] mt-2 leading-relaxed max-w-[300px] ${nunito.className}`}
             style={{ color: C.muted }}
           >
-            {store.description}
+            {tc?.heroDescription || store.description}
           </p>
         )}
 
         {/* Pill row */}
         <div className="flex flex-wrap gap-2 mt-4">
-          {store.openingHours && (
+          {(tc?.openingHours || store.openingHours) && (
             <span
               className={`text-[11px] rounded-full px-3 py-1.5 font-semibold ${nunito.className}`}
               style={{ background: C.surface, color: C.muted, border: `1px solid ${C.border}` }}
             >
-              {store.openingHours}
+              {tc?.openingHours || store.openingHours}
             </span>
           )}
           {store.deliveryInfo && (

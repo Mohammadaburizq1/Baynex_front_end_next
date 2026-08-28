@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Search, Package, X, ChevronRight, Truck, Store, Phone, MapPin } from 'lucide-react';
 import { Header } from '@/components/dashboard/Header';
 import { Button } from '@/components/ui/Button';
@@ -8,7 +8,7 @@ import { StatusBadge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
-import { mockOrders } from '@/lib/mock-data';
+import { useStore } from '@/contexts/StoreContext';
 import {
   formatCurrency,
   formatDateTime,
@@ -17,7 +17,42 @@ import {
   PAYMENT_STATUS_MAP,
   cn,
 } from '@/lib/utils';
-import type { Order, OrderStatus } from '@/lib/types';
+import type { Order, OrderStatus, PaymentStatus, PaymentMethod, FulfillmentType } from '@/lib/types';
+import type { ApiOrder } from '@/lib/api/orders';
+
+// ── Map API order → local Order ────────────────────────────────────────────────
+
+function apiToOrder(o: ApiOrder): Order {
+  return {
+    id: o.id,
+    orderNumber: o.orderNumber,
+    customerId: o.customerId ?? '',
+    customerName: o.customerName,
+    customerPhone: o.customerPhone ?? '',
+    customerEmail: o.customerEmail ?? '',
+    items: (o.items ?? []).map((item, idx) => ({
+      id: item.id ?? String(idx),
+      productId: item.productId,
+      productName: item.productName,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      totalPrice: item.totalPrice,
+    })),
+    subtotal: o.subtotal,
+    deliveryFee: o.deliveryFee ?? 0,
+    discount: o.discount ?? 0,
+    tax: o.tax ?? 0,
+    total: o.total,
+    status: o.status,
+    paymentStatus: (o.paymentStatus ?? 'unpaid') as PaymentStatus,
+    paymentMethod: (o.paymentMethod ?? 'cash') as PaymentMethod,
+    fulfillmentType: (o.fulfillmentType ?? 'pickup') as FulfillmentType,
+    deliveryAddress: o.deliveryAddress,
+    notes: o.notes,
+    createdAt: o.createdAt,
+    updatedAt: o.updatedAt ?? o.createdAt,
+  };
+}
 
 // ── Status progression map ─────────────────────────────────────────────────────
 
@@ -95,7 +130,6 @@ function StatusTimeline({ currentStatus }: { currentStatus: OrderStatus }) {
 
         return (
           <li key={step} className="flex items-start gap-3 pb-4 last:pb-0 relative">
-            {/* Vertical line */}
             {idx < STATUS_PROGRESSION.length - 1 && (
               <span
                 className={cn(
@@ -104,7 +138,6 @@ function StatusTimeline({ currentStatus }: { currentStatus: OrderStatus }) {
                 )}
               />
             )}
-            {/* Dot */}
             <span
               className={cn(
                 'relative z-10 w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5',
@@ -154,14 +187,12 @@ function OrderDetailPanel({ order, onClose, onStatusChange, onCancel }: SidePane
 
   return (
     <>
-      {/* Mobile scrim */}
       <div
         className="fixed inset-0 z-30 bg-black/40 lg:hidden"
         onClick={onClose}
         aria-hidden="true"
       />
 
-      {/* Panel */}
       <aside
         className={cn(
           'fixed right-0 top-0 bottom-0 z-40 bg-white border-l border-surface-200 shadow-xl',
@@ -171,7 +202,6 @@ function OrderDetailPanel({ order, onClose, onStatusChange, onCancel }: SidePane
         role="complementary"
         aria-label="Order detail"
       >
-        {/* Panel header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-surface-200 shrink-0">
           <div>
             <h2 className="text-base font-semibold text-slate-900">
@@ -190,7 +220,6 @@ function OrderDetailPanel({ order, onClose, onStatusChange, onCancel }: SidePane
           </button>
         </div>
 
-        {/* Scrollable body */}
         <div className="flex-1 overflow-y-auto">
           {/* Customer info */}
           <section className="px-5 py-4 border-b border-surface-200 space-y-2">
@@ -266,7 +295,6 @@ function OrderDetailPanel({ order, onClose, onStatusChange, onCancel }: SidePane
               ))}
             </ul>
 
-            {/* Totals */}
             <div className="mt-4 pt-3 border-t border-surface-200 space-y-1.5">
               <div className="flex justify-between text-sm text-slate-600">
                 <span>Subtotal</span>
@@ -291,7 +319,6 @@ function OrderDetailPanel({ order, onClose, onStatusChange, onCancel }: SidePane
             </div>
           </section>
 
-          {/* Notes */}
           {order.notes && (
             <section className="px-5 py-4 border-b border-surface-200">
               <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
@@ -301,7 +328,6 @@ function OrderDetailPanel({ order, onClose, onStatusChange, onCancel }: SidePane
             </section>
           )}
 
-          {/* Status timeline */}
           <section className="px-5 py-4">
             <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
               Status
@@ -310,7 +336,6 @@ function OrderDetailPanel({ order, onClose, onStatusChange, onCancel }: SidePane
           </section>
         </div>
 
-        {/* Panel footer — action buttons */}
         {!isFinal && (
           <div className="px-5 py-4 border-t border-surface-200 space-y-2 shrink-0">
             {nextAction && (
@@ -340,10 +365,33 @@ function OrderDetailPanel({ order, onClose, onStatusChange, onCancel }: SidePane
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function OrdersPage() {
+  const { store } = useStore();
   const { success } = useToast();
 
-  // Local order state
-  const [orders, setOrders] = useState<Order[]>(mockOrders);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loadingOrders, setLoadingOrders] = useState(true);
+
+  useEffect(() => {
+    async function fetchOrders() {
+      const token = localStorage.getItem('sl_access_token') ?? localStorage.getItem('authToken');
+      if (!token) {
+        const { loadStoreOrders } = await import('@/lib/utils/store-scoped-data');
+        setOrders(loadStoreOrders(store.slug));
+        setLoadingOrders(false);
+        return;
+      }
+      try {
+        const { getOrders } = await import('@/lib/api/orders');
+        const apiOrders = await getOrders();
+        setOrders(apiOrders.map(apiToOrder));
+      } catch {
+        const { loadStoreOrders } = await import('@/lib/utils/store-scoped-data');
+        setOrders(loadStoreOrders(store.slug));
+      }
+      setLoadingOrders(false);
+    }
+    fetchOrders();
+  }, [store.slug]);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -379,34 +427,41 @@ export default function OrdersPage() {
     });
   }, [orders, activeTab, search]);
 
-  // ── Selected order object ─────────────────────────────────────────────────────
-
   const selectedOrder = orders.find(o => o.id === selectedOrderId) ?? null;
 
   // ── Handlers ──────────────────────────────────────────────────────────────────
 
-  function handleStatusChange(orderId: string, next: OrderStatus) {
-    setOrders(prev =>
-      prev.map(o =>
-        o.id === orderId
-          ? { ...o, status: next, updatedAt: new Date().toISOString() }
-          : o,
-      ),
-    );
-    const meta = ORDER_STATUS_MAP[next];
-    success(`Order status updated to "${meta.label}".`);
+  async function handleStatusChange(orderId: string, next: OrderStatus) {
+    // Optimistic update
+    setOrders(prev => prev.map(o =>
+      o.id === orderId ? { ...o, status: next, updatedAt: new Date().toISOString() } : o,
+    ));
+    success(`Order status updated to "${ORDER_STATUS_MAP[next].label}".`);
+
+    try {
+      const { updateOrderStatus } = await import('@/lib/api/orders');
+      await updateOrderStatus(orderId, next);
+    } catch {
+      // Revert optimistic update on failure
+      setOrders(prev => prev.map(o =>
+        o.id === orderId ? { ...o, status: 'pending' as OrderStatus } : o,
+      ));
+    }
   }
 
-  function handleCancel(orderId: string) {
-    setOrders(prev =>
-      prev.map(o =>
-        o.id === orderId
-          ? { ...o, status: 'cancelled' as OrderStatus, updatedAt: new Date().toISOString() }
-          : o,
-      ),
-    );
+  async function handleCancel(orderId: string) {
+    setOrders(prev => prev.map(o =>
+      o.id === orderId ? { ...o, status: 'cancelled' as OrderStatus, updatedAt: new Date().toISOString() } : o,
+    ));
     success('Order has been cancelled.');
     setSelectedOrderId(null);
+
+    try {
+      const { updateOrderStatus } = await import('@/lib/api/orders');
+      await updateOrderStatus(orderId, 'cancelled');
+    } catch {
+      // ignore — UI already updated
+    }
   }
 
   return (
@@ -462,7 +517,11 @@ export default function OrdersPage() {
 
         {/* ── Orders table ─────────────────────────────────────────────────── */}
         <div className="bg-white rounded-card border border-surface-200 shadow-card overflow-hidden">
-          {filtered.length === 0 ? (
+          {loadingOrders ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="w-8 h-8 rounded-full border-2 border-primary-500 border-t-transparent animate-spin" />
+            </div>
+          ) : filtered.length === 0 ? (
             <EmptyState
               icon={<Package size={28} />}
               title="No orders found"
@@ -576,7 +635,6 @@ export default function OrdersPage() {
             </div>
           )}
 
-          {/* Pagination hint */}
           <div className="px-4 py-3 border-t border-surface-200 bg-surface-50 text-xs text-slate-500">
             Showing {filtered.length} of {orders.length} orders
           </div>

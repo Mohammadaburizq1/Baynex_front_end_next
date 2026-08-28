@@ -46,6 +46,7 @@ const AURORA_ACCENTS = [A.teal, A.purple, A.cyan, A.pink, A.green, A.teal, A.pur
 
 export default function AuroraBrewTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
   const [cart, setCart] = useState<Record<number, number>>({});
   const [activeCategory, setActiveCategory] = useState('All');
 
@@ -191,7 +192,7 @@ export default function AuroraBrewTemplate({ data }: { data: StorefrontData }) {
           </h1>
 
           <p className="hero-in-3 text-base sm:text-lg mb-12 max-w-sm leading-relaxed" style={{ color:'rgba(232,244,255,0.55)' }}>
-            {store.description}
+            {tc?.heroDescription || store.description}
           </p>
 
           {/* CTA */}
@@ -240,7 +241,7 @@ export default function AuroraBrewTemplate({ data }: { data: StorefrontData }) {
               The Menu
             </h2>
             <p className="mt-3 text-sm" style={{ color:'rgba(232,244,255,0.35)' }}>
-              {store.openingHours} · {store.deliveryInfo}
+              {tc?.openingHours || store.openingHours} · {store.deliveryInfo}
             </p>
           </div>
 

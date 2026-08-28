@@ -83,6 +83,7 @@ const SVC_ICONS = [Camera, Video, Palette, Layers, Aperture, Zap];
 
 export default function ObsidianStudioTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
   const [navSolid, setNavSolid] = useState(false);
   const [activeT, setActiveT] = useState(0);
   const [hoveredSvc, setHoveredSvc] = useState<number | null>(null);
@@ -640,7 +641,7 @@ export default function ObsidianStudioTemplate({ data }: { data: StorefrontData 
             <h1 className={`os-hero-h1 ${bebasNeue.className}`}>
               We Make<br /><span>Images</span><br />That Move.
             </h1>
-            <p className="os-hero-sub">{store.description || 'Award-winning photography and visual media production for brands that refuse to be ordinary.'}</p>
+            <p className="os-hero-sub">{tc?.heroDescription || store.description || 'Award-winning photography and visual media production for brands that refuse to be ordinary.'}</p>
             <div className="os-hero-btns">
               <button className="os-btn-red" onClick={() => scrollTo('os-gallery')}>
                 View Our Work <ArrowRight size={13} />
@@ -847,7 +848,7 @@ export default function ObsidianStudioTemplate({ data }: { data: StorefrontData 
             <span className="os-cta-sub"><ChevronRight size={12} />Response within 24 hours</span>
           </div>
           <div className="os-cta-details" style={up(ctaVis, 160)}>
-            {store.openingHours && <div className="os-cta-detail"><Clock size={13} />{store.openingHours}</div>}
+            {(tc?.openingHours || store.openingHours) && <div className="os-cta-detail"><Clock size={13} />{tc?.openingHours || store.openingHours}</div>}
             <div className="os-cta-detail"><MapPin size={13} />Studio Location</div>
             {store.whatsappNumber && <div className="os-cta-detail"><Phone size={13} />{store.whatsappNumber}</div>}
           </div>

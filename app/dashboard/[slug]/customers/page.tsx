@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Search, Eye, X, Star, Users, UserCheck, UserPlus, Phone, Mail, MapPin, ShoppingBag, DollarSign, BarChart2, Tag, Save } from 'lucide-react';
 import { Header } from '@/components/dashboard/Header';
 import { Button } from '@/components/ui/Button';
@@ -9,7 +9,8 @@ import { Badge } from '@/components/ui/Badge';
 import { Select, Textarea } from '@/components/ui/Input';
 import { useToast } from '@/components/ui/Toast';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { mockCustomers } from '@/lib/mock-data';
+import { useStore } from '@/contexts/StoreContext';
+import { loadStoreCustomers, saveStoreCustomers } from '@/lib/utils/store-scoped-data';
 import { formatCurrency, formatRelativeTime, formatDate, cn } from '@/lib/utils';
 import type { Customer } from '@/lib/types';
 
@@ -58,8 +59,18 @@ function AvatarCircle({ name, size = 'sm' }: { name: string; size?: 'sm' | 'lg' 
 const AVAILABLE_TAGS = ['vip', 'regular', 'new', 'corporate'];
 
 export default function CustomersPage() {
+  const { store } = useStore();
   const { success } = useToast();
-  const [customers, setCustomers] = useState<Customer[]>(mockCustomers);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+
+  useEffect(() => {
+    setCustomers(loadStoreCustomers(store.slug));
+  }, [store.slug]);
+
+  const persistCustomers = (next: Customer[]) => {
+    setCustomers(next);
+    saveStoreCustomers(store.slug, next);
+  };
   const [search, setSearch] = useState('');
   const [tagFilter, setTagFilter] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -101,11 +112,10 @@ export default function CustomersPage() {
     if (!selectedCustomer) return;
     setSavingNotes(true);
     setTimeout(() => {
-      setCustomers(prev =>
-        prev.map(c =>
-          c.id === selectedCustomer.id ? { ...c, notes: panelNotes, tags: panelTags } : c,
-        ),
+      const next = customers.map(c =>
+        c.id === selectedCustomer.id ? { ...c, notes: panelNotes, tags: panelTags } : c,
       );
+      persistCustomers(next);
       setSelectedCustomer(prev => (prev ? { ...prev, notes: panelNotes, tags: panelTags } : prev));
       setSavingNotes(false);
       success('Customer notes saved');

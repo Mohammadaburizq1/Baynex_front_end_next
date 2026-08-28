@@ -5,18 +5,20 @@ import { DesktopSidebar, MobileSidebar } from '@/components/dashboard/Sidebar';
 
 export const metadata = { title: 'Dashboard — ShopLink' };
 
-export default function DashboardLayout({ children }: { children: ReactNode }) {
+interface LayoutProps {
+  children: ReactNode;
+  params: Promise<{ slug: string }>;
+}
+
+export default async function DashboardSlugLayout({ children, params }: LayoutProps) {
+  const { slug } = await params;
+
   return (
-    <StoreProvider>
+    <StoreProvider slug={slug}>
       <ToastProvider>
         <div className="flex h-screen overflow-hidden bg-surface-50 font-jakarta">
-          {/* Desktop sidebar */}
           <DesktopSidebar />
-
-          {/* Mobile drawer */}
           <MobileSidebar />
-
-          {/* Main content */}
           <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
             {children}
           </div>

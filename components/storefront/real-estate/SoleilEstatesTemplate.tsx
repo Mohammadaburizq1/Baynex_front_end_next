@@ -83,6 +83,7 @@ const TESTIMONIALS = [
 
 export default function SoleilEstatesTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
   const [category, setCategory] = useState('All');
   const [navSolid, setNavSolid] = useState(false);
   const [activeTestimonial, setActiveTestimonial] = useState(0);
@@ -1105,7 +1106,7 @@ export default function SoleilEstatesTemplate({ data }: { data: StorefrontData }
           </h1>
           <div className="sl-hero-gold-line" />
           <p className="sl-hero-desc">
-            {store.description || 'Two decades of expertise placing discerning clients in exceptional properties across the region and beyond.'}
+            {tc?.heroDescription || store.description || 'Two decades of expertise placing discerning clients in exceptional properties across the region and beyond.'}
           </p>
           <div className="sl-hero-btns">
             <button className="sl-btn-gold" onClick={() => scrollTo('sl-properties')}>
@@ -1320,7 +1321,7 @@ export default function SoleilEstatesTemplate({ data }: { data: StorefrontData }
             </a>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div className="sl-cta-detail"><MapPin size={14} style={{ color: 'rgba(212,168,83,0.5)' }} />City Centre Office</div>
-              {store.openingHours && <div className="sl-cta-detail"><Clock size={14} style={{ color: 'rgba(212,168,83,0.5)' }} />{store.openingHours}</div>}
+              {(tc?.openingHours || store.openingHours) && <div className="sl-cta-detail"><Clock size={14} style={{ color: 'rgba(212,168,83,0.5)' }} />{tc?.openingHours || store.openingHours}</div>}
               {store.whatsappNumber && <div className="sl-cta-detail"><Phone size={14} style={{ color: 'rgba(212,168,83,0.5)' }} />{store.whatsappNumber}</div>}
             </div>
           </div>

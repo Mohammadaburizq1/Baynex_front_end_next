@@ -35,6 +35,7 @@ const LEAVES = [
 
 export default function TropicalBloomTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
   const [cart, setCart] = useState<Record<number, number>>({});
   const [activeCategory, setActiveCategory] = useState('All');
 
@@ -154,7 +155,7 @@ export default function TropicalBloomTemplate({ data }: { data: StorefrontData }
           </div>
 
           <p className="hero-word text-lg sm:text-xl mb-12 max-w-sm leading-relaxed" style={{ animationDelay: '0.45s', color: 'rgba(255,245,224,0.65)' }}>
-            {store.description}
+            {tc?.heroDescription || store.description}
           </p>
 
           {/* CTA */}
@@ -184,7 +185,7 @@ export default function TropicalBloomTemplate({ data }: { data: StorefrontData }
               The Menu
             </h2>
             <p className="text-sm" style={{ color: 'rgba(255,245,224,0.4)' }}>
-              {store.openingHours} · {store.deliveryInfo}
+              {tc?.openingHours || store.openingHours} · {store.deliveryInfo}
             </p>
           </div>
 

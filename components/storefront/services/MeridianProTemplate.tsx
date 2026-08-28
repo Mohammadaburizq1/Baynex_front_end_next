@@ -71,6 +71,7 @@ const STRENGTHS = [
 
 export default function MeridianProTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
   const [category, setCategory] = useState('All');
   const [navSolid, setNavSolid] = useState(false);
   const [activeT, setActiveT] = useState(0);
@@ -822,7 +823,7 @@ export default function MeridianProTemplate({ data }: { data: StorefrontData }) 
           </h1>
           <div className="mp-copper-rule" />
           <p className="mp-hero-desc">
-            {store.description || 'Expert advisory services that cut through complexity and deliver measurable outcomes for ambitious organisations.'}
+            {tc?.heroDescription || store.description || 'Expert advisory services that cut through complexity and deliver measurable outcomes for ambitious organisations.'}
           </p>
           <div className="mp-hero-btns">
             <button className="mp-btn-copper" onClick={() => scrollTo('mp-services')}>
@@ -1002,7 +1003,7 @@ export default function MeridianProTemplate({ data }: { data: StorefrontData }) 
               Book via WhatsApp
             </a>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-              {store.openingHours && <div className="mp-cta-detail"><Clock size={13} className="mp-cta-detail-icon" />{store.openingHours}</div>}
+              {(tc?.openingHours || store.openingHours) && <div className="mp-cta-detail"><Clock size={13} className="mp-cta-detail-icon" />{tc?.openingHours || store.openingHours}</div>}
               <div className="mp-cta-detail"><MapPin size={13} className="mp-cta-detail-icon" />City Centre Office</div>
               {store.whatsappNumber && <div className="mp-cta-detail"><Phone size={13} className="mp-cta-detail-icon" />{store.whatsappNumber}</div>}
             </div>

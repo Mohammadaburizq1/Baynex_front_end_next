@@ -4,11 +4,28 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Search, Check, ChevronUp, ChevronDown, Play,
-  MessageCircle,
+  MessageCircle, Lock, Eye, EyeOff,
   MapPin, Truck, Package, Clock, CalendarDays, Loader2,
   CheckCircle2, MousePointerClick,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ClothingTemplateEditor } from '@/components/dashboard/ClothingTemplateEditor';
+import { TemplateEditor } from '@/components/dashboard/TemplateEditor';
+import { defaultClothingContent, isClothingTemplateId } from '@/lib/data/clothing-presets';
+import type { ClothingTemplateContent } from '@/lib/types/clothing-template-content';
+import type { TemplateContent } from '@/lib/types/template-content';
+import { initStoreData } from '@/lib/utils/store-scoped-data';
+import { dashboardPath } from '@/lib/utils/dashboard-path';
+import {
+  mergeClothingContent,
+  saveTemplateContentForSlug,
+  saveTemplateDraft,
+} from '@/lib/utils/clothing-content';
+import {
+  mergeTemplateContent,
+  saveDraft as saveNonClothingDraft,
+  saveTemplateContent as saveNonClothingContent,
+} from '@/lib/utils/template-content';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 type BusinessType = 'retail' | 'restaurant' | 'real_estate' | 'services' | 'catalog' | 'medical' | 'clothing';
@@ -85,8 +102,8 @@ const FILTER_LABELS: Record<TemplateFilter, string> = {
   real_estate: 'Real Estate', medical: 'Medical', clothing: 'Clothing', modern: 'Modern', luxury: 'Luxury',
 };
 
-const STEP_LABELS = ['Choose Design', 'Business Details', 'Contact & Hours'];
-const LAST_STEP = 2;
+const STEP_LABELS = ['Contact & Account', 'Choose Design', 'Business Details', 'Customize'];
+const LAST_STEP = 3;
 
 const STORE_NAME_LABELS: Record<BusinessType, string> = {
   retail: 'Store Name', restaurant: 'Restaurant Name',
@@ -1777,6 +1794,171 @@ function TemplateCard({ template: t, selected, onSelect }: {
   );
 }
 
+// ── Customize step ─────────────────────────────────────────────────────────
+const ACCENT_PRESETS = [
+  '#6366F1', '#8B5CF6', '#EC4899', '#C4A55A', '#D4F500',
+  '#0D9488', '#2E86DE', '#22C55E', '#FF5533', '#DC2626',
+  '#9B7060', '#C9A84C', '#E91E8C', '#00D9FF', '#FF6B35',
+];
+
+function CustomizeStep({
+  selectedTemplate,
+  accentColor, onAccentColorChange,
+  logoUrl, onLogoUrlChange,
+  templateContent, onTemplateContentChange,
+  nonClothingContent, onNonClothingContentChange,
+}: {
+  selectedTemplate: Template | null;
+  accentColor: string; onAccentColorChange: (v: string) => void;
+  logoUrl: string; onLogoUrlChange: (v: string) => void;
+  templateContent: ClothingTemplateContent;
+  onTemplateContentChange: (v: ClothingTemplateContent) => void;
+  nonClothingContent: TemplateContent;
+  onNonClothingContentChange: (v: TemplateContent) => void;
+}) {
+  const isClothing = selectedTemplate?.businessType === 'clothing';
+
+  const inputStyle: React.CSSProperties = {
+    background: '#1A1D28', border: '1px solid #2A2F3D', color: '#F4F4F5',
+  };
+  const focusStyle = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    e.currentTarget.style.borderColor = '#818CF8';
+    e.currentTarget.style.boxShadow = '0 0 0 2px rgba(99,102,241,0.2)';
+  };
+  const blurStyle = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    e.currentTarget.style.borderColor = '#2A2F3D';
+    e.currentTarget.style.boxShadow = 'none';
+  };
+
+  return (
+    <div>
+      <h2 className="text-[26px] font-extrabold leading-tight mb-2" style={{ color: '#F4F4F5', letterSpacing: '-0.5px' }}>
+        Customize Your Store
+      </h2>
+      <p className="text-[15px] mb-6" style={{ color: '#B4C0D0', lineHeight: 1.5 }}>
+        Personalize the text, images, and colors shown in your storefront.
+      </p>
+
+      {selectedTemplate && (
+        <div
+          className="flex items-center gap-3 px-4 py-3 rounded-xl mb-6 border"
+          style={{ background: '#1A1D28', borderColor: '#2A2F3D' }}
+        >
+          <div
+            className="w-8 h-8 rounded-lg shrink-0"
+            style={{ background: `linear-gradient(135deg, ${selectedTemplate.gradient[0]}, ${selectedTemplate.gradient[1]})` }}
+          />
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: '#B4C0D0' }}>Selected Template</p>
+            <p className="text-sm font-bold" style={{ color: '#F4F4F5' }}>{selectedTemplate.name}</p>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-5">
+
+        {isClothing ? (
+          <div
+            className="rounded-xl border p-4 max-h-[min(60vh,520px)] overflow-y-auto"
+            style={{ background: '#14171F', borderColor: '#2A2F3D' }}
+          >
+            <p className="text-sm font-semibold mb-4" style={{ color: '#B4C0D0' }}>
+              Edit every headline, image, testimonial, and section on your storefront.
+            </p>
+            <ClothingTemplateEditor
+              content={templateContent}
+              onChange={next => {
+                onTemplateContentChange(next);
+                if (selectedTemplate?.id) {
+                  saveTemplateDraft(selectedTemplate.id, next);
+                }
+              }}
+              dark
+            />
+          </div>
+        ) : (
+          <div
+            className="rounded-xl border p-4 max-h-[min(60vh,520px)] overflow-y-auto"
+            style={{ background: '#14171F', borderColor: '#2A2F3D' }}
+          >
+            <p className="text-sm font-semibold mb-4" style={{ color: '#B4C0D0' }}>
+              Edit every headline, image, and section on your storefront.
+            </p>
+            <TemplateEditor
+              templateId={selectedTemplate?.id ?? 'retail-classic'}
+              content={nonClothingContent}
+              onChange={next => {
+                onNonClothingContentChange(next);
+                if (selectedTemplate?.id) {
+                  saveNonClothingDraft(selectedTemplate.id, next);
+                }
+              }}
+            />
+          </div>
+        )}
+
+        {/* Logo */}
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-semibold" style={{ color: '#B4C0D0' }}>
+            Logo URL <span style={{ color: '#555E77', fontWeight: 400 }}>(optional)</span>
+          </label>
+          <input
+            type="url"
+            value={logoUrl}
+            onChange={e => onLogoUrlChange(e.target.value)}
+            placeholder="https://example.com/logo.png"
+            className="w-full h-11 rounded-xl text-sm outline-none px-3 transition-all duration-150"
+            style={inputStyle}
+            onFocus={focusStyle}
+            onBlur={blurStyle}
+          />
+          <p className="text-xs" style={{ color: '#6B7280' }}>Shown in your navigation bar. If left empty, your store initials will be used.</p>
+        </div>
+
+        {/* Accent Color */}
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-semibold" style={{ color: '#B4C0D0' }}>Accent Color</label>
+          <div className="flex flex-wrap gap-2 items-center">
+            {ACCENT_PRESETS.map(c => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => onAccentColorChange(c)}
+                className="w-8 h-8 rounded-lg shrink-0 cursor-pointer transition-all duration-150"
+                style={{
+                  background: c,
+                  border: accentColor.toLowerCase() === c.toLowerCase() ? '3px solid #F4F4F5' : '2px solid transparent',
+                  boxShadow: accentColor.toLowerCase() === c.toLowerCase() ? '0 0 0 2px #6366F1' : 'none',
+                  transform: accentColor.toLowerCase() === c.toLowerCase() ? 'scale(1.18)' : 'scale(1)',
+                }}
+              />
+            ))}
+            <label
+              className="w-8 h-8 rounded-lg overflow-hidden cursor-pointer shrink-0 relative border-2"
+              style={{ borderColor: '#3D4556', borderStyle: 'dashed' }}
+              title="Pick a custom color"
+            >
+              <span className="absolute inset-0 flex items-center justify-center text-sm font-bold" style={{ color: '#B4C0D0' }}>+</span>
+              <input
+                type="color"
+                value={accentColor}
+                onChange={e => onAccentColorChange(e.target.value)}
+                className="opacity-0 absolute inset-0 w-full h-full cursor-pointer"
+              />
+            </label>
+          </div>
+          <div className="flex items-center gap-2 mt-0.5">
+            <div className="w-5 h-5 rounded-md border" style={{ background: accentColor, borderColor: '#3D4556' }} />
+            <span className="text-sm font-mono" style={{ color: '#B4C0D0' }}>{accentColor}</span>
+          </div>
+          <p className="text-xs" style={{ color: '#6B7280' }}>Used for buttons, highlights, and key accents across your store.</p>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
 // ── Business details step ──────────────────────────────────────────────────
 function BusinessDetailsStep({
   businessType, storeName, onStoreNameChange,
@@ -1853,6 +2035,8 @@ function ContactStep({
   delivery, onDeliveryChange, pickup, onPickupChange,
   openingHours, onOpeningHoursChange, booking, onBookingChange,
   inquiryMode, onInquiryModeChange,
+  password, onPasswordChange, confirmPassword, onConfirmPasswordChange,
+  showPassword, onToggleShowPassword,
 }: {
   businessType: BusinessType;
   phone: string; onPhoneChange: (v: string) => void;
@@ -1862,25 +2046,62 @@ function ContactStep({
   openingHours: string; onOpeningHoursChange: (v: string) => void;
   booking: boolean; onBookingChange: (v: boolean) => void;
   inquiryMode: boolean; onInquiryModeChange: (v: boolean) => void;
+  password: string; onPasswordChange: (v: string) => void;
+  confirmPassword: string; onConfirmPasswordChange: (v: string) => void;
+  showPassword: boolean; onToggleShowPassword: () => void;
 }) {
   return (
     <div>
       <h2 className="text-2xl font-extrabold mb-1" style={{ color: '#F4F4F5', letterSpacing: '-0.4px' }}>
-        Contact &amp; Hours
+        Contact &amp; Account
       </h2>
       <p className="text-sm mb-6" style={{ color: '#B4C0D0', lineHeight: 1.5 }}>
-        How customers reach you and how your store operates.
+        How customers reach you and set a password for your account.
       </p>
 
       <div className="flex flex-col gap-4">
         <DarkInput
-          label={businessType === 'real_estate' ? 'Office WhatsApp' : 'WhatsApp Number'}
+          label={businessType === 'real_estate' ? 'Office WhatsApp' : 'Phone / WhatsApp Number'}
           value={phone}
           onChange={onPhoneChange}
           placeholder="+60 1X-XXX XXXX"
           type="tel"
           prefix={MessageCircle}
         />
+
+        {/* Password section */}
+        <div className="flex flex-col gap-4 pt-4" style={{ borderTop: '1px solid #2A2F3D' }}>
+          <p className="text-sm font-bold" style={{ color: '#B4C0D0' }}>Set your account password</p>
+
+          <DarkInput
+            label="Password"
+            value={password}
+            onChange={onPasswordChange}
+            type={showPassword ? 'text' : 'password'}
+            placeholder="Min. 8 characters"
+            prefix={Lock}
+            suffix={
+              <button
+                type="button"
+                onClick={onToggleShowPassword}
+                className="p-0.5 rounded transition-colors cursor-pointer"
+                style={{ color: '#B4C0D0' }}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            }
+          />
+
+          <DarkInput
+            label="Confirm Password"
+            value={confirmPassword}
+            onChange={onConfirmPasswordChange}
+            type={showPassword ? 'text' : 'password'}
+            placeholder="Re-enter password"
+            prefix={Lock}
+          />
+        </div>
 
         <DarkInput
           label="Address"
@@ -1939,26 +2160,66 @@ function ContactStep({
   );
 }
 
+// ── Phone OTP verification step ─────────────────────────────────────────────
+function OtpVerifyStep({
+  phone, code, onCodeChange, onResend, resendCooldown,
+}: {
+  phone: string; code: string; onCodeChange: (v: string) => void;
+  onResend: () => void; resendCooldown: number;
+}) {
+  return (
+    <div>
+      <h2 className="text-2xl font-extrabold mb-1" style={{ color: '#F4F4F5', letterSpacing: '-0.4px' }}>
+        Verify Your Phone
+      </h2>
+      <p className="text-sm mb-6" style={{ color: '#B4C0D0', lineHeight: 1.5 }}>
+        We sent a 6-digit code to {phone}. Enter it below to continue.
+      </p>
+
+      <div className="flex flex-col gap-4">
+        <DarkInput
+          label="Verification Code"
+          value={code}
+          onChange={v => onCodeChange(v.replace(/[^0-9]/g, '').slice(0, 6))}
+          placeholder="123456"
+          type="text"
+          prefix={MessageCircle}
+        />
+
+        <button
+          type="button"
+          onClick={onResend}
+          disabled={resendCooldown > 0}
+          className="self-start text-sm font-semibold transition-opacity disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+          style={{ color: '#818CF8' }}
+        >
+          {resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : 'Resend code'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main page ──────────────────────────────────────────────────────────────
 export default function OnboardingPage() {
   const router = useRouter();
 
   const [step, setStep] = useState(0);
 
-  // Step 0
+  // Step 1 — Choose Design
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>('retail-classic');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<TemplateFilter>('all');
   const [pageIndex, setPageIndex] = useState(0);
 
-  // Step 1
+  // Step 2 — Business Details
   const [storeName, setStoreName] = useState('');
   const [slug, setSlug] = useState('');
   const [slugStatus, setSlugStatus] = useState<SlugStatus>('idle');
   const [serviceArea, setServiceArea] = useState('');
   const slugTimer = useRef<ReturnType<typeof setTimeout>>();
 
-  // Step 2
+  // Step 0 — Contact & Account
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [delivery, setDelivery] = useState(false);
@@ -1966,9 +2227,31 @@ export default function OnboardingPage() {
   const [openingHours, setOpeningHours] = useState('');
   const [booking, setBooking] = useState(false);
   const [inquiryMode, setInquiryMode] = useState(false);
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [awaitingOtp, setAwaitingOtp] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [otpSubmitting, setOtpSubmitting] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [phoneAccountVerified, setPhoneAccountVerified] = useState(false);
+
+  // Step 3
+  const [brandDescription, setBrandDescription] = useState('');
+  const [heroImageUrl, setHeroImageUrl] = useState('');
+  const [accentColor, setAccentColor] = useState('#6366F1');
+  const [logoUrl, setLogoUrl] = useState('');
+  const [templateContent, setTemplateContent] = useState<ClothingTemplateContent>(() =>
+    defaultClothingContent('clothing-boutique'),
+  );
+  const [nonClothingContent, setNonClothingContent] = useState<TemplateContent>(() =>
+    mergeTemplateContent('retail-classic'),
+  );
 
   const [finishing, setFinishing] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [infoMsg, setInfoMsg] = useState('');
+  const [accountConflict, setAccountConflict] = useState(false);
 
   const selectedTemplate = TEMPLATES.find(t => t.id === selectedTemplateId) ?? null;
   const businessType: BusinessType = selectedTemplate?.businessType ?? 'retail';
@@ -1990,6 +2273,30 @@ export default function OnboardingPage() {
   const safePage = Math.min(pageIndex, totalPages - 1);
   const pageItems = filteredTemplates.slice(safePage * PER_PAGE, safePage * PER_PAGE + PER_PAGE);
 
+  // Sync accent color when template changes
+  useEffect(() => {
+    if (selectedTemplate?.accentColor) setAccentColor(selectedTemplate.accentColor);
+  }, [selectedTemplateId]);
+
+  // Load clothing template defaults when a clothing design is selected
+  useEffect(() => {
+    if (selectedTemplateId && isClothingTemplateId(selectedTemplateId)) {
+      const base = defaultClothingContent(selectedTemplateId);
+      setTemplateContent(base);
+      setBrandDescription(base.heroDescription);
+      setHeroImageUrl(base.heroImageUrl);
+    } else if (selectedTemplateId) {
+      setNonClothingContent(mergeTemplateContent(selectedTemplateId));
+    }
+  }, [selectedTemplateId]);
+
+  // OTP resend cooldown countdown
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setTimeout(() => setResendCooldown(c => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
+
   // Auto-slug from store name
   useEffect(() => {
     if (storeName && !slug) setSlug(toSlug(storeName));
@@ -2009,40 +2316,315 @@ export default function OnboardingPage() {
 
   const handleContinue = async () => {
     setErrorMsg('');
+    setInfoMsg('');
+    setAccountConflict(false);
 
     if (step === 0) {
+      if (!phone) { setErrorMsg('Please enter your phone number.'); return; }
+      if (!isValidPhone(phone)) { setErrorMsg('Please enter a valid phone number (e.g. +60 12-345 6789).'); return; }
+      if (!password || password.length < 8) { setErrorMsg('Password must be at least 8 characters.'); return; }
+      if (password !== confirmPassword) { setErrorMsg('Passwords do not match.'); return; }
+
+      const existingToken = localStorage.getItem('sl_access_token') ?? localStorage.getItem('authToken');
+      if (existingToken) {
+        // Token already issued this session (e.g. user hit Back after registering) — don't
+        // re-register, but still gate on verification rather than blindly skipping ahead.
+        if (phoneAccountVerified) {
+          setStep(1);
+        } else {
+          setAwaitingOtp(true);
+        }
+        return;
+      }
+
+      setFinishing(true);
+      try {
+        const { registerByPhone, login } = await import('@/lib/api/auth');
+        let user;
+        try {
+          user = await registerByPhone({
+            phone,
+            fullName: storeName || 'Store Owner',
+            shopName: storeName || undefined,
+            password,
+          });
+        } catch (e: any) {
+          const msg: string = e?.message ?? 'Registration failed';
+          if (msg === 'PHONE_EXISTS') {
+            // Phone already registered — surface that clearly, then log in to get a token
+            // rather than silently swapping accounts underneath the merchant.
+            if (phone && password) {
+              setInfoMsg('This number already has an account — signing you in instead.');
+              try {
+                user = await login(phone, password);
+              } catch {
+                setInfoMsg('');
+                setErrorMsg("This number already has an account, but that password doesn't match. Log in instead, or reset your password.");
+                setAccountConflict(true);
+                return;
+              }
+            } else {
+              setErrorMsg('This phone number is already registered. Please log in first.');
+              return;
+            }
+          } else {
+            setErrorMsg(msg);
+            return;
+          }
+        }
+        setInfoMsg('');
+        setPhoneAccountVerified(user.phoneVerified);
+        if (user.phoneVerified) {
+          setStep(1);
+        } else {
+          setAwaitingOtp(true);
+        }
+      } catch (e: any) {
+        setErrorMsg(`Account error: ${e?.message ?? 'Registration failed'}`);
+      } finally {
+        setFinishing(false);
+      }
+    } else if (step === 1) {
       if (!selectedTemplateId) {
         setErrorMsg('Please select a storefront design to continue.');
         return;
       }
-      setStep(1);
-    } else if (step === 1) {
+      setStep(2);
+    } else if (step === 2) {
       if (slug && (slugStatus === 'taken' || slugStatus === 'invalid')) {
         setErrorMsg(slugStatus === 'taken'
           ? 'That URL is already taken. Choose a different one.'
           : 'URL must be at least 3 characters — letters, numbers and hyphens only.');
         return;
       }
-      setStep(2);
+      setStep(3);
     } else {
-      if (!phone) { setErrorMsg('Please enter your WhatsApp number.'); return; }
-      if (!isValidPhone(phone)) { setErrorMsg('Please enter a valid phone number (e.g. +60 12-345 6789).'); return; }
       setFinishing(true);
       try {
-        await new Promise(r => setTimeout(r, 1000));
-        router.push('/onboarding/follow-up');
+        // Map businessType → backend categorySlug
+        const CATEGORY_MAP: Record<string, string> = {
+          restaurant: 'restaurants-cafes',
+          retail: 'general-store',
+          clothing: 'clothes-fashion',
+          services: 'beauty-salon',
+          real_estate: 'general-store',
+          medical: 'general-store',
+          catalog: 'general-store',
+        };
+        // Map template id → subcategory slug (restaurant only)
+        const SUBCATEGORY_MAP: Record<string, string> = {
+          'restaurant-default': 'fast-food',
+          'cafe': 'cafe',
+          'coffee-cyber-brew': 'cafe',
+          'coffee-green-leaf': 'cafe',
+          'coffee-retro-groove': 'cafe',
+          'coffee-blossom': 'cafe',
+          'coffee-neon-drip': 'cafe',
+          'coffee-luxury-espresso': 'cafe',
+          'coffee-aurora-brew': 'cafe',
+          'coffee-tropical-bloom': 'cafe',
+          'coffee-dark-academia': 'cafe',
+          'burger-restaurant': 'burger-restaurant',
+          'dessert-shop': 'dessert-shop',
+          'ramen-shop': 'fast-food',
+          'mediterranean-restaurant': 'fast-food',
+          'smoothie-bar': 'healthy-food',
+          'korean-grille': 'fast-food',
+          'french-brasserie': 'fast-food',
+          'clothing-boutique': 'clothing-boutique',
+          'clothing-editorial': 'clothing-editorial',
+          'clothing-streetwear': 'clothing-streetwear',
+        };
+
+        const categorySlug = CATEGORY_MAP[businessType] ?? 'general-store';
+        const subCategorySlug = SUBCATEGORY_MAP[selectedTemplateId ?? ''];
+        const finalSlug = slug || toSlug(storeName || 'my-store');
+        const isClothing = businessType === 'clothing' && isClothingTemplateId(selectedTemplateId ?? '');
+        const mergedClothing = isClothing
+          ? mergeClothingContent(selectedTemplateId!, templateContent)
+          : null;
+        const descriptionText = isClothing
+          ? (mergedClothing!.heroDescription || brandDescription)
+          : (nonClothingContent.heroDescription || brandDescription);
+        const coverImage = isClothing
+          ? (mergedClothing!.heroImageUrl || heroImageUrl)
+          : (nonClothingContent.heroImageUrl || heroImageUrl);
+
+        const payload = {
+          name: storeName || 'My Store',
+          slug: finalSlug,
+          categorySlug,
+          ...(subCategorySlug ? { subCategorySlug } : {}),
+          ...(selectedTemplateId ? { templateKey: selectedTemplateId } : {}),
+          ...(descriptionText ? { description: descriptionText } : {}),
+          ...(coverImage ? { coverImageUrl: coverImage } : {}),
+          ...(logoUrl ? { logoUrl } : {}),
+          ...(phone ? { phone, whatsappNumber: phone } : {}),
+          ...(address ? { address } : {}),
+          ...(accentColor ? { primaryColor: accentColor } : {}),
+        };
+
+        if (isClothing && mergedClothing) {
+          saveTemplateContentForSlug(finalSlug, mergedClothing);
+          saveTemplateDraft(selectedTemplateId!, mergedClothing);
+        } else if (!isClothing && selectedTemplateId) {
+          saveNonClothingContent(finalSlug, nonClothingContent);
+          saveNonClothingDraft(selectedTemplateId, nonClothingContent);
+        }
+
+        // Reuse the idempotency key + original save time from any existing draft for this same
+        // slug, so retries (including a later replay from /onboarding/follow-up) are safe to run
+        // more than once. A different slug means a genuinely new submission — fresh key/timestamp.
+        let idempotencyKey = '';
+        let savedAt = Date.now();
+        try {
+          const existingRaw = localStorage.getItem('shoplink_store');
+          if (existingRaw) {
+            const existing = JSON.parse(existingRaw);
+            if (existing?.slug === finalSlug && existing?.idempotencyKey) {
+              idempotencyKey = existing.idempotencyKey;
+              savedAt = existing.savedAt ?? savedAt;
+            }
+          }
+        } catch { /* ignore */ }
+        if (!idempotencyKey) {
+          idempotencyKey = crypto.randomUUID();
+        }
+
+        try {
+          localStorage.setItem('shoplink_store', JSON.stringify({
+            name: storeName || 'My Store',
+            slug: finalSlug,
+            businessType,
+            category: categorySlug,
+            description: descriptionText,
+            phone,
+            address,
+            theme: selectedTemplateId ?? (
+              businessType === 'clothing' ? 'clothing-boutique'
+              : businessType === 'restaurant' ? 'restaurant-default'
+              : 'retail-classic'
+            ),
+            logo: logoUrl || undefined,
+            coverImage: coverImage || undefined,
+            ...(mergedClothing ? { templateContent: mergedClothing } : {}),
+            // Matches the server-enforced default (StoreService.create() always starts DRAFT) —
+            // this is just the optimistic local guess shown before the dashboard's first fetch
+            // confirms real status, so it must not claim a state the backend won't grant.
+            status: 'draft',
+            currency: 'MYR',
+            timezone: 'Asia/Kuala_Lumpur',
+            email: '',
+            idempotencyKey,
+            savedAt,
+          }));
+          initStoreData(finalSlug);
+        } catch { /* ignore */ }
+
+        // Register account if not already logged in
+        const existingToken = localStorage.getItem('sl_access_token') ?? localStorage.getItem('authToken');
+        if (!existingToken) {
+          try {
+            const { registerByPhone, login } = await import('@/lib/api/auth');
+            try {
+              await registerByPhone({
+                phone,
+                fullName: storeName || 'Store Owner',
+                shopName: storeName || undefined,
+                password,
+              });
+            } catch (e: any) {
+              const msg: string = e?.message ?? 'Registration failed';
+              if (msg === 'PHONE_EXISTS') {
+                // Phone already registered — surface that clearly, then log in to get a token
+                // rather than silently swapping accounts underneath the merchant.
+                if (phone && password) {
+                  setInfoMsg('This number already has an account — signing you in instead.');
+                  try {
+                    await login(phone, password);
+                    setInfoMsg('');
+                  } catch {
+                    setInfoMsg('');
+                    setErrorMsg("This number already has an account, but that password doesn't match. Log in instead, or reset your password.");
+                    setAccountConflict(true);
+                    return;
+                  }
+                } else {
+                  setErrorMsg('This phone number is already registered. Please log in first.');
+                  return;
+                }
+              } else {
+                throw e;
+              }
+            }
+          } catch (e: any) {
+            setErrorMsg(`Account error: ${e?.message ?? 'Registration failed'}`);
+            return;
+          }
+        }
+
+        try {
+          const { createStore } = await import('@/lib/api/stores');
+          await createStore(payload, idempotencyKey);
+          router.push(dashboardPath(finalSlug));
+        } catch (e: any) {
+          const msg = e?.message ?? '';
+          // If backend is unreachable (network error) go to follow-up, otherwise show the real error
+          if (!msg || msg.toLowerCase().includes('fetch') || msg.toLowerCase().includes('network') || msg.toLowerCase().includes('failed to')) {
+            router.push('/onboarding/follow-up');
+          } else {
+            setErrorMsg(`Could not create store: ${msg}`);
+          }
+        }
       } finally {
         setFinishing(false);
       }
     }
   };
 
+  const handleVerifyOtp = async () => {
+    setErrorMsg('');
+    if (!/^\d{6}$/.test(otpCode)) {
+      setErrorMsg('Enter the 6-digit code.');
+      return;
+    }
+    setOtpSubmitting(true);
+    try {
+      const { verifyPhone } = await import('@/lib/api/auth');
+      await verifyPhone(phone, otpCode);
+      setAwaitingOtp(false);
+      setOtpCode('');
+      setPhoneAccountVerified(true);
+      setStep(1);
+    } catch (e: any) {
+      setErrorMsg(e?.message ?? 'Invalid or expired code.');
+    } finally {
+      setOtpSubmitting(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    setErrorMsg('');
+    setResendCooldown(30);
+    try {
+      const { resendPhoneVerification } = await import('@/lib/api/auth');
+      await resendPhoneVerification(phone);
+    } catch (e: any) {
+      setErrorMsg(e?.message ?? 'Could not resend code.');
+    }
+  };
+
   const continueLabel =
-    step === 0 ? 'Continue to Business Details' :
+    step === 0 ? 'Continue to Design' :
+    step === 1 ? 'Continue to Business Details' :
+    step === 2 ? 'Continue to Customize' :
     step === LAST_STEP ? 'Create Store' :
     'Continue';
 
-  const maxWClass = step === 0 ? 'max-w-[1280px]' : 'max-w-[720px]';
+  const maxWClass =
+    step === 1 ? 'max-w-[1280px]' :
+    step === 3 ? 'max-w-[1280px]' :
+    'max-w-[720px]';
 
   return (
     <>
@@ -2103,20 +2685,76 @@ export default function OnboardingPage() {
               <StepPills currentStep={step} labels={STEP_LABELS} />
             </div>
 
+            {infoMsg && (
+              <div
+                className="mb-4 px-4 py-3 rounded-xl text-sm font-medium border flex items-center gap-2"
+                style={{ background: 'rgba(99,102,241,0.10)', borderColor: 'rgba(99,102,241,0.30)', color: '#A5B4FC' }}
+              >
+                <Loader2 size={14} className="animate-spin shrink-0" />
+                {infoMsg}
+              </div>
+            )}
+
             {errorMsg && (
               <div
                 className="mb-4 px-4 py-3 rounded-xl text-sm font-medium border"
                 style={{ background: 'rgba(239,68,68,0.10)', borderColor: 'rgba(239,68,68,0.30)', color: '#FCA5A5' }}
               >
                 {errorMsg}
+                {accountConflict && (
+                  <div className="mt-2.5 flex gap-4">
+                    <a
+                      href="/login"
+                      className="text-sm font-bold transition-opacity hover:opacity-75"
+                      style={{ color: '#818CF8' }}
+                    >
+                      Log in instead
+                    </a>
+                    <a
+                      href={`/forgot-password?mode=phone&phone=${encodeURIComponent(phone)}`}
+                      className="text-sm font-bold transition-opacity hover:opacity-75"
+                      style={{ color: '#818CF8' }}
+                    >
+                      Reset your password
+                    </a>
+                  </div>
+                )}
               </div>
             )}
 
-            <div key={step} className="animate-fadeIn">
-              {step === 0 && (
+            <div key={`${step}-${awaitingOtp}`} className="animate-fadeIn">
+              {step === 0 && awaitingOtp && (
+                <OtpVerifyStep
+                  phone={phone}
+                  code={otpCode}
+                  onCodeChange={setOtpCode}
+                  onResend={handleResendOtp}
+                  resendCooldown={resendCooldown}
+                />
+              )}
+              {step === 0 && !awaitingOtp && (
+                <ContactStep
+                  businessType={businessType}
+                  phone={phone} onPhoneChange={setPhone}
+                  address={address} onAddressChange={setAddress}
+                  delivery={delivery} onDeliveryChange={setDelivery}
+                  pickup={pickup} onPickupChange={setPickup}
+                  openingHours={openingHours} onOpeningHoursChange={setOpeningHours}
+                  booking={booking} onBookingChange={setBooking}
+                  inquiryMode={inquiryMode} onInquiryModeChange={setInquiryMode}
+                  password={password} onPasswordChange={setPassword}
+                  confirmPassword={confirmPassword} onConfirmPasswordChange={setConfirmPassword}
+                  showPassword={showPassword} onToggleShowPassword={() => setShowPassword(v => !v)}
+                />
+              )}
+              {step === 1 && (
                 <TemplateGalleryStep
                   selectedId={selectedTemplateId}
-                  onSelect={id => { setSelectedTemplateId(id); setErrorMsg(''); }}
+                  onSelect={id => {
+                    setSelectedTemplateId(id);
+                    setErrorMsg('');
+                    try { localStorage.setItem('sl_selected_template', id); } catch { /* ignore */ }
+                  }}
                   searchQuery={searchQuery}
                   onSearchChange={q => { setSearchQuery(q); setPageIndex(0); }}
                   activeFilter={activeFilter}
@@ -2128,7 +2766,7 @@ export default function OnboardingPage() {
                   onGoPage={(next, fwd) => { setPageIndex(next); }}
                 />
               )}
-              {step === 1 && (
+              {step === 2 && (
                 <BusinessDetailsStep
                   businessType={businessType}
                   storeName={storeName}
@@ -2142,16 +2780,17 @@ export default function OnboardingPage() {
                   onServiceAreaChange={setServiceArea}
                 />
               )}
-              {step === 2 && (
-                <ContactStep
-                  businessType={businessType}
-                  phone={phone} onPhoneChange={setPhone}
-                  address={address} onAddressChange={setAddress}
-                  delivery={delivery} onDeliveryChange={setDelivery}
-                  pickup={pickup} onPickupChange={setPickup}
-                  openingHours={openingHours} onOpeningHoursChange={setOpeningHours}
-                  booking={booking} onBookingChange={setBooking}
-                  inquiryMode={inquiryMode} onInquiryModeChange={setInquiryMode}
+              {step === 3 && (
+                <CustomizeStep
+                  selectedTemplate={selectedTemplate}
+                  accentColor={accentColor}
+                  onAccentColorChange={setAccentColor}
+                  logoUrl={logoUrl}
+                  onLogoUrlChange={setLogoUrl}
+                  templateContent={templateContent}
+                  onTemplateContentChange={setTemplateContent}
+                  nonClothingContent={nonClothingContent}
+                  onNonClothingContentChange={setNonClothingContent}
                 />
               )}
             </div>
@@ -2167,10 +2806,17 @@ export default function OnboardingPage() {
             }}
           >
             <div className="flex gap-3">
-              {step > 0 && (
+              {(step > 0 || awaitingOtp) && (
                 <button
-                  onClick={() => { setStep(s => s - 1); setErrorMsg(''); }}
-                  disabled={finishing}
+                  onClick={() => {
+                    setErrorMsg('');
+                    if (awaitingOtp) {
+                      setAwaitingOtp(false);
+                    } else {
+                      setStep(s => s - 1);
+                    }
+                  }}
+                  disabled={finishing || otpSubmitting}
                   className="flex-1 h-12 rounded-xl text-[15px] font-semibold cursor-pointer transition-all duration-150 disabled:opacity-40 border"
                   style={{ borderColor: '#B4C0D0', color: '#F4F4F5' }}
                 >
@@ -2178,15 +2824,15 @@ export default function OnboardingPage() {
                 </button>
               )}
               <button
-                onClick={handleContinue}
-                disabled={finishing}
+                onClick={awaitingOtp ? handleVerifyOtp : handleContinue}
+                disabled={finishing || otpSubmitting}
                 className="flex-1 h-12 rounded-xl text-[15px] font-bold text-white cursor-pointer transition-all duration-150 disabled:opacity-50 flex items-center justify-center gap-2"
                 style={{ background: '#6366F1' }}
-                onMouseEnter={e => { if (!finishing) e.currentTarget.style.background = '#4F46E5'; }}
+                onMouseEnter={e => { if (!finishing && !otpSubmitting) e.currentTarget.style.background = '#4F46E5'; }}
                 onMouseLeave={e => { e.currentTarget.style.background = '#6366F1'; }}
               >
-                {finishing && <Loader2 size={16} className="animate-spin" />}
-                {continueLabel}
+                {(finishing || otpSubmitting) && <Loader2 size={16} className="animate-spin" />}
+                {awaitingOtp ? 'Verify Phone' : continueLabel}
               </button>
             </div>
           </div>

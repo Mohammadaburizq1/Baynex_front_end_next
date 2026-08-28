@@ -90,6 +90,7 @@ function ProductCard({
 
 export default function UrbanRushTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
 
   // ── Cart state ──
   const [cart, setCart] = useState<CartItem[]>([]);

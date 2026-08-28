@@ -82,6 +82,7 @@ const WHY = [
 
 export default function AxiomPropertiesTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
   const [category, setCategory] = useState('All');
   const [navSolid, setNavSolid] = useState(false);
 
@@ -1010,7 +1011,7 @@ export default function AxiomPropertiesTemplate({ data }: { data: StorefrontData
         </div>
         <div className="ax-hero-bottom">
           <p className="ax-hero-desc">
-            {store.description || 'Premier real estate agency. Proven results. Two decades of deals that matter.'}
+            {tc?.heroDescription || store.description || 'Premier real estate agency. Proven results. Two decades of deals that matter.'}
           </p>
           <div className="ax-hero-btns">
             <button className="ax-btn-red" onClick={() => scrollTo('ax-properties')}>
@@ -1221,7 +1222,7 @@ export default function AxiomPropertiesTemplate({ data }: { data: StorefrontData
             </a>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div className="ax-cta-detail"><MapPin size={13} />City Centre Office</div>
-              {store.openingHours && <div className="ax-cta-detail"><Clock size={13} />{store.openingHours}</div>}
+              {(tc?.openingHours || store.openingHours) && <div className="ax-cta-detail"><Clock size={13} />{tc?.openingHours || store.openingHours}</div>}
               {store.whatsappNumber && <div className="ax-cta-detail"><Phone size={13} />{store.whatsappNumber}</div>}
             </div>
           </div>

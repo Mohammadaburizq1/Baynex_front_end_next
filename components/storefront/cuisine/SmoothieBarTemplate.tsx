@@ -30,6 +30,7 @@ const CARD_PALETTES = [
 
 export default function SmoothieBarTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
   const [activeCategory, setActiveCategory] = useState('All');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
@@ -174,7 +175,7 @@ export default function SmoothieBarTemplate({ data }: { data: StorefrontData }) 
           </h1>
 
           <p className={poppins.className} style={{ color: '#52744A', fontSize: 18, maxWidth: 460, margin: '18px auto 36px', lineHeight: 1.65, fontWeight: 400, animation: 'bounceIn 0.6s 0.35s ease both', opacity: 0 }}>
-            {store.description}
+            {tc?.heroDescription || store.description}
           </p>
 
           {/* Color dot row */}

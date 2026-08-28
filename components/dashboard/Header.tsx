@@ -1,9 +1,10 @@
 'use client';
 
-import { Menu, Bell, ChevronDown, LogOut, User, ExternalLink } from 'lucide-react';
+import { Menu, Bell, ChevronDown, LogOut, User, ExternalLink, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useStore } from '@/contexts/StoreContext';
+import { signOut } from '@/lib/auth/session';
 import { cn } from '@/lib/utils';
 
 interface HeaderProps {
@@ -16,10 +17,18 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
   const { user, store, setSidebarOpen } = useStore();
   const router = useRouter();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
-  const handleLogout = () => {
-    localStorage.removeItem('authToken');
-    router.push('/login');
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    setUserMenuOpen(false);
+    try {
+      await signOut();
+    } finally {
+      router.push('/login');
+      router.refresh();
+    }
   };
 
   return (
@@ -101,10 +110,11 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
                 </button>
                 <button
                   onClick={handleLogout}
-                  className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                  disabled={loggingOut}
+                  className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors cursor-pointer disabled:opacity-60"
                 >
-                  <LogOut size={15} />
-                  Logout
+                  {loggingOut ? <Loader2 size={15} className="animate-spin" /> : <LogOut size={15} />}
+                  {loggingOut ? 'Logging out…' : 'Log out'}
                 </button>
               </div>
             </>

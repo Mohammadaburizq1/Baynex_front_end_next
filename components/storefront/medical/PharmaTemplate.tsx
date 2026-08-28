@@ -82,6 +82,7 @@ const CAT_ICONS = [Pill, Leaf, Thermometer, Syringe, HeartPulse, FlaskConical];
 
 export default function PharmaTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
   const [navSolid, setNavSolid] = useState(false);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
@@ -537,7 +538,7 @@ export default function PharmaTemplate({ data }: { data: StorefrontData }) {
               Your Health,<br />Delivered <span>Fast.</span>
             </h1>
             <p className="ph-hero-desc">
-              {store.description || 'Premium medicines, supplements, and health products — dispensed by expert pharmacists and delivered to your door.'}
+              {tc?.heroDescription || store.description || 'Premium medicines, supplements, and health products — dispensed by expert pharmacists and delivered to your door.'}
             </p>
             <div className="ph-search">
               <div className="ph-search-icon"><Search size={16} /></div>
@@ -744,7 +745,7 @@ export default function PharmaTemplate({ data }: { data: StorefrontData }) {
               Order via WhatsApp
             </a>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-              {store.openingHours && <div className="ph-cta-detail"><Clock size={13} />{store.openingHours}</div>}
+              {(tc?.openingHours || store.openingHours) && <div className="ph-cta-detail"><Clock size={13} />{tc?.openingHours || store.openingHours}</div>}
               <div className="ph-cta-detail"><MapPin size={13} />Pharmacy Location</div>
               {store.whatsappNumber && <div className="ph-cta-detail"><Phone size={13} />{store.whatsappNumber}</div>}
             </div>

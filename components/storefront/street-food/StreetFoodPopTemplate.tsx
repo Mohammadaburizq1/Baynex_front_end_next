@@ -1,10 +1,15 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import type { StorefrontData, PublicProduct } from '@/lib/types/store';
-import { ShoppingCart, X } from 'lucide-react';
+import { ShoppingCart, User, X } from 'lucide-react';
 import { Bungee } from 'next/font/google';
 import { Poppins } from 'next/font/google';
+import { useToast } from '@/components/ui/Toast';
+import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
+import { createOrder, type DeliveryMethod, type PaymentMethod } from '@/lib/api/checkout';
+import { saveCartDraft, clearCartDraft, readCartDraft } from '@/lib/utils/cart-draft';
 
 const bungee = Bungee({ subsets: ['latin'], weight: ['400'], display: 'swap' });
 const poppins = Poppins({ subsets: ['latin'], weight: ['700', '800', '900'], display: 'swap' });
@@ -113,19 +118,44 @@ function CheckoutPanel({
   currencySuffix,
   whatsappNumber,
   shopName,
+  storeSlug,
   onClose,
+  onOrderPlaced,
 }: {
   cart: CartItem[];
   currencySuffix: string;
   whatsappNumber: string | null;
   shopName: string;
+  storeSlug: string;
   onClose: () => void;
+  onOrderPlaced: () => void;
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const { success, error } = useToast();
+  const { user, isAuthenticated } = useCustomerAuth();
+
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
+  const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('DELIVERY');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
+  const [submitting, setSubmitting] = useState(false);
+  const [orderCode, setOrderCode] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    setName((prev) => prev || user.name);
+    setEmail((prev) => prev || user.email);
+    setPhone((prev) => prev || user.phone || '');
+  }, [user]);
+
   const total = cart.reduce((sum, item) => {
     return sum + (item.product.discountPrice ?? item.product.price) * item.qty;
   }, 0);
 
-  const handleOrder = () => {
+  const handleWhatsAppOrder = () => {
     if (!whatsappNumber) return;
     const lines = cart
       .map(
@@ -139,6 +169,84 @@ function CheckoutPanel({
       '_blank',
     );
   };
+
+  const handleOrder = async () => {
+    if (!isAuthenticated) {
+      saveCartDraft(storeSlug, cart.map((item) => ({ productId: String(item.product.id), qty: item.qty })));
+      router.push(`/customer/login?redirect=${encodeURIComponent(pathname)}`);
+      return;
+    }
+    if (!name.trim() || !phone.trim()) {
+      error('Name and phone are required.');
+      return;
+    }
+    if (deliveryMethod === 'DELIVERY' && !address.trim()) {
+      error('Delivery address is required.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await createOrder(storeSlug, {
+        customerName: name.trim(),
+        customerEmail: email.trim() || undefined,
+        customerPhone: phone.trim(),
+        customerAddress: address.trim() || undefined,
+        deliveryMethod,
+        paymentMethod,
+        deliveryFee: 0,
+        discount: 0,
+        items: cart.map((item) => ({ productId: String(item.product.id), quantity: item.qty })),
+      });
+      setOrderCode(res.orderCode);
+      clearCartDraft(storeSlug);
+      success(`Order placed! Code ${res.orderCode}`);
+      onOrderPlaced();
+    } catch (e) {
+      error(e instanceof Error ? e.message : 'Could not place order.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (orderCode) {
+    return (
+      <div
+        className="fixed inset-0 z-40 flex items-end"
+        style={{ background: 'rgba(17,17,17,0.6)' }}
+        onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      >
+        <div
+          className="w-full rounded-t-3xl px-5 pt-6 pb-8 text-center"
+          style={{ background: C.mustard, borderTop: '4px solid #111' }}
+        >
+          <h2 className={`${bungee.className} mb-3`} style={{ fontSize: '24px', color: C.black }}>
+            ORDER PLACED!
+          </h2>
+          <p className={`${poppins.className} font-bold text-sm mb-1`} style={{ color: C.black }}>
+            Your order code
+          </p>
+          <p className={`${bungee.className}`} style={{ fontSize: '28px', color: C.ketchup }}>
+            {orderCode}
+          </p>
+          <button
+            onClick={onClose}
+            className={`${bungee.className} w-full cursor-pointer mt-6`}
+            style={{
+              height: '56px',
+              background: C.black,
+              border: '4px solid #111',
+              fontSize: '18px',
+              color: C.white,
+              borderRadius: '12px',
+            }}
+          >
+            CLOSE
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -200,7 +308,7 @@ function CheckoutPanel({
         </div>
 
         {/* Total */}
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between mb-3">
           <span className={`${bungee.className} text-lg`} style={{ color: C.black }}>
             TOTAL
           </span>
@@ -209,10 +317,79 @@ function CheckoutPanel({
           </span>
         </div>
 
+        {/* Delivery / Payment chips */}
+        <div className="flex gap-2 mb-3">
+          {(['DELIVERY', 'PICKUP'] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setDeliveryMethod(m)}
+              className={`${poppins.className} font-black text-xs cursor-pointer px-3 py-2 flex-1`}
+              style={{
+                border: '3px solid #111',
+                borderRadius: '10px',
+                background: deliveryMethod === m ? C.black : C.white,
+                color: deliveryMethod === m ? C.mustard : C.black,
+              }}
+            >
+              {m}
+            </button>
+          ))}
+          {(['CASH', 'CARD'] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setPaymentMethod(m)}
+              className={`${poppins.className} font-black text-xs cursor-pointer px-3 py-2 flex-1`}
+              style={{
+                border: '3px solid #111',
+                borderRadius: '10px',
+                background: paymentMethod === m ? C.black : C.white,
+                color: paymentMethod === m ? C.mustard : C.black,
+              }}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+
+        {/* Contact fields */}
+        <div className="flex flex-col gap-2 mb-3">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Full name"
+            className={`${poppins.className} text-sm px-3 py-2 w-full`}
+            style={{ border: '3px solid #111', borderRadius: '10px', background: C.white, color: C.black }}
+          />
+          <input
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="Phone"
+            className={`${poppins.className} text-sm px-3 py-2 w-full`}
+            style={{ border: '3px solid #111', borderRadius: '10px', background: C.white, color: C.black }}
+          />
+          <input
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Email (optional)"
+            className={`${poppins.className} text-sm px-3 py-2 w-full`}
+            style={{ border: '3px solid #111', borderRadius: '10px', background: C.white, color: C.black }}
+          />
+          {deliveryMethod === 'DELIVERY' && (
+            <input
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder="Delivery address"
+              className={`${poppins.className} text-sm px-3 py-2 w-full`}
+              style={{ border: '3px solid #111', borderRadius: '10px', background: C.white, color: C.black }}
+            />
+          )}
+        </div>
+
         {/* Place Order button */}
         <button
           onClick={handleOrder}
-          className={`${bungee.className} w-full cursor-pointer mt-4`}
+          disabled={submitting}
+          className={`${bungee.className} w-full cursor-pointer`}
           style={{
             height: '64px',
             background: C.ketchup,
@@ -220,10 +397,21 @@ function CheckoutPanel({
             fontSize: '24px',
             color: C.white,
             borderRadius: '12px',
+            opacity: submitting ? 0.6 : 1,
           }}
         >
-          PLACE ORDER
+          {submitting ? '...' : 'PLACE ORDER'}
         </button>
+
+        {whatsappNumber && (
+          <button
+            onClick={handleWhatsAppOrder}
+            className={`${poppins.className} font-bold text-xs w-full cursor-pointer mt-2 underline`}
+            style={{ color: C.black }}
+          >
+            or order via WhatsApp instead
+          </button>
+        )}
       </div>
     </div>
   );
@@ -233,10 +421,29 @@ function CheckoutPanel({
 
 export default function StreetFoodPopTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
+  const { user, isAuthenticated } = useCustomerAuth();
+  const pathname = usePathname();
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [activeCategory, setActiveCategory] = useState<string>('ALL');
   const [panelOpen, setPanelOpen] = useState(false);
+
+  useEffect(() => {
+    const draft = readCartDraft(store.slug);
+    if (!draft || draft.length === 0) return;
+    const restored: CartItem[] = [];
+    for (const d of draft) {
+      const product = products.find((p) => String(p.id) === d.productId);
+      if (product) restored.push({ product, qty: d.qty });
+    }
+    if (restored.length > 0) {
+      setCart(restored);
+      setPanelOpen(true);
+    }
+    clearCartDraft(store.slug);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.slug]);
 
   const availableProducts = useMemo(
     () => products.filter((p) => p.available),
@@ -288,10 +495,10 @@ export default function StreetFoodPopTemplate({ data }: { data: StorefrontData }
           }}
         >
           <span>
-            🔥 FREE DELIVERY OVER 20 JOD 🔥 ORDER NOW 🍔 FRESH DAILY 🔥 FREE DELIVERY OVER 20 JOD 🔥 ORDER NOW 🍔 FRESH DAILY 🔥{' '}
+            {tc?.tickerText || '🔥 FREE DELIVERY OVER 20 JOD 🔥 ORDER NOW 🍔 FRESH DAILY 🔥 FREE DELIVERY OVER 20 JOD 🔥 ORDER NOW 🍔 FRESH DAILY 🔥'}{' '}
           </span>
           <span>
-            🔥 FREE DELIVERY OVER 20 JOD 🔥 ORDER NOW 🍔 FRESH DAILY 🔥 FREE DELIVERY OVER 20 JOD 🔥 ORDER NOW 🍔 FRESH DAILY 🔥{' '}
+            {tc?.tickerText || '🔥 FREE DELIVERY OVER 20 JOD 🔥 ORDER NOW 🍔 FRESH DAILY 🔥 FREE DELIVERY OVER 20 JOD 🔥 ORDER NOW 🍔 FRESH DAILY 🔥'}{' '}
           </span>
         </div>
       </div>
@@ -313,28 +520,42 @@ export default function StreetFoodPopTemplate({ data }: { data: StorefrontData }
           {store.shopName}
         </h1>
 
-        <button
-          onClick={() => setPanelOpen(true)}
-          className="flex items-center gap-2 cursor-pointer px-3 py-2"
-          style={{ background: C.black, borderRadius: '12px' }}
-          aria-label={`Cart, ${cartCount} items`}
-        >
-          <ShoppingCart size={20} color={C.white} />
-          {cartCount > 0 && (
-            <span
-              className={`${poppins.className} font-black`}
-              style={{
-                background: C.ketchup,
-                color: C.white,
-                borderRadius: '9999px',
-                padding: '2px 6px',
-                fontSize: '10px',
-              }}
-            >
-              {cartCount}
+        <div className="flex items-center gap-2">
+          <a
+            href={isAuthenticated ? '/customer/account' : `/customer/login?redirect=${encodeURIComponent(pathname)}`}
+            className="flex items-center gap-1.5 cursor-pointer px-3 py-2"
+            style={{ background: C.white, border: '3px solid #111', borderRadius: '12px' }}
+            aria-label={isAuthenticated ? 'My account' : 'Sign in'}
+          >
+            <User size={16} color={C.black} />
+            <span className={`${poppins.className} font-black text-xs hidden sm:inline`} style={{ color: C.black }}>
+              {isAuthenticated ? (user?.name?.split(' ')[0] || 'Account') : 'Sign In'}
             </span>
-          )}
-        </button>
+          </a>
+
+          <button
+            onClick={() => setPanelOpen(true)}
+            className="flex items-center gap-2 cursor-pointer px-3 py-2"
+            style={{ background: C.black, borderRadius: '12px' }}
+            aria-label={`Cart, ${cartCount} items`}
+          >
+            <ShoppingCart size={20} color={C.white} />
+            {cartCount > 0 && (
+              <span
+                className={`${poppins.className} font-black`}
+                style={{
+                  background: C.ketchup,
+                  color: C.white,
+                  borderRadius: '9999px',
+                  padding: '2px 6px',
+                  fontSize: '10px',
+                }}
+              >
+                {cartCount}
+              </span>
+            )}
+          </button>
+        </div>
       </header>
 
       {/* Categories */}
@@ -413,7 +634,9 @@ export default function StreetFoodPopTemplate({ data }: { data: StorefrontData }
           currencySuffix={store.currencySuffix}
           whatsappNumber={store.whatsappNumber}
           shopName={store.shopName}
+          storeSlug={store.slug}
           onClose={() => setPanelOpen(false)}
+          onOrderPlaced={() => setCart([])}
         />
       )}
     </div>

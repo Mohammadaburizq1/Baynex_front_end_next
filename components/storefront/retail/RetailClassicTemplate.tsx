@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import type { StorefrontData, PublicProduct } from '@/lib/types/store';
-import { ShoppingBag, X, Minus, Plus } from 'lucide-react';
+import { ShoppingBag } from 'lucide-react';
+import CheckoutDrawer from '@/components/storefront/restaurant-default/CheckoutDrawer';
+import { readCartDraft, clearCartDraft } from '@/lib/utils/cart-draft';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -114,169 +116,32 @@ function ProductCard({
   );
 }
 
-// ─── Cart Drawer ──────────────────────────────────────────────────────────────
-
-function CartDrawer({
-  cart,
-  open,
-  primary,
-  currencySuffix,
-  onClose,
-  onRemove,
-  onChangeQty,
-}: {
-  cart: CartItem[];
-  open: boolean;
-  primary: string;
-  currencySuffix: string;
-  onClose: () => void;
-  onRemove: (id: number) => void;
-  onChangeQty: (id: number, delta: number) => void;
-}) {
-  const total = cart.reduce((sum, item) => {
-    const price = item.product.discountPrice ?? item.product.price;
-    return sum + price * item.qty;
-  }, 0);
-
-  return (
-    <>
-      {/* Overlay */}
-      {open && (
-        <div
-          className="fixed inset-0 bg-black/40 z-40"
-          onClick={onClose}
-          aria-hidden="true"
-        />
-      )}
-
-      {/* Drawer */}
-      <div
-        role="dialog"
-        aria-label="Shopping cart"
-        aria-modal="true"
-        className="fixed inset-y-0 right-0 w-80 bg-white shadow-2xl z-50 flex flex-col"
-        style={{
-          transform: open ? 'translateX(0)' : 'translateX(100%)',
-          transition: 'transform 300ms ease',
-        }}
-      >
-        {/* Header */}
-        <div className="px-5 py-4 border-b flex justify-between items-center" style={{ borderColor: COLORS.border }}>
-          <h2 className="font-jakarta font-bold text-lg" style={{ color: COLORS.ink }}>
-            Your Bag
-          </h2>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-gray-100 transition cursor-pointer"
-            aria-label="Close cart"
-          >
-            <X size={20} color={COLORS.ink} />
-          </button>
-        </div>
-
-        {/* Items */}
-        <div className="flex-1 overflow-y-auto">
-          {cart.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full gap-3 px-6">
-              <ShoppingBag size={40} color={COLORS.muted} />
-              <p className="font-jakarta text-sm text-center" style={{ color: COLORS.muted }}>
-                Your bag is empty
-              </p>
-            </div>
-          ) : (
-            cart.map((item) => {
-              const price = item.product.discountPrice ?? item.product.price;
-              return (
-                <div
-                  key={item.product.id}
-                  className="flex gap-3 py-3 px-5 border-b items-start"
-                  style={{ borderColor: COLORS.border }}
-                >
-                  {/* Thumbnail */}
-                  <div className="w-[60px] h-[60px] rounded-xl overflow-hidden flex-shrink-0">
-                    <ProductImage
-                      imageUrl={item.product.imageUrl}
-                      name={item.product.name}
-                      primary={COLORS.muted}
-                    />
-                  </div>
-
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <p className="font-jakarta font-bold text-sm line-clamp-1" style={{ color: COLORS.ink }}>
-                      {item.product.name}
-                    </p>
-                    <p className="font-jakarta text-sm mt-0.5" style={{ color: COLORS.muted }}>
-                      {price.toLocaleString()} {currencySuffix}
-                    </p>
-                    {/* Qty controls */}
-                    <div className="flex items-center gap-2 mt-2">
-                      <button
-                        onClick={() => onChangeQty(item.product.id, -1)}
-                        className="w-6 h-6 rounded-full border flex items-center justify-center cursor-pointer hover:bg-gray-50 transition"
-                        style={{ borderColor: COLORS.border }}
-                        aria-label="Decrease quantity"
-                      >
-                        <Minus size={12} color={COLORS.ink} />
-                      </button>
-                      <span className="font-jakarta font-bold text-sm w-4 text-center" style={{ color: COLORS.ink }}>
-                        {item.qty}
-                      </span>
-                      <button
-                        onClick={() => onChangeQty(item.product.id, 1)}
-                        className="w-6 h-6 rounded-full border flex items-center justify-center cursor-pointer hover:bg-gray-50 transition"
-                        style={{ borderColor: COLORS.border }}
-                        aria-label="Increase quantity"
-                      >
-                        <Plus size={12} color={COLORS.ink} />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Remove */}
-                  <button
-                    onClick={() => onRemove(item.product.id)}
-                    className="p-1 rounded hover:bg-gray-100 transition cursor-pointer flex-shrink-0"
-                    aria-label={`Remove ${item.product.name}`}
-                  >
-                    <X size={14} color={COLORS.muted} />
-                  </button>
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        {/* Footer */}
-        {cart.length > 0 && (
-          <div className="px-5 py-4 border-t" style={{ borderColor: COLORS.border }}>
-            <div className="flex justify-between items-center mb-3">
-              <span className="font-jakarta text-sm" style={{ color: COLORS.muted }}>Total</span>
-              <span className="font-jakarta font-bold text-lg" style={{ color: COLORS.ink }}>
-                {total.toLocaleString()} {currencySuffix}
-              </span>
-            </div>
-            <button
-              className="w-full h-12 rounded-xl font-jakarta font-bold text-sm text-white cursor-pointer"
-              style={{ background: primary }}
-            >
-              Checkout
-            </button>
-          </div>
-        )}
-      </div>
-    </>
-  );
-}
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function RetailClassicTemplate({ data }: { data: StorefrontData }) {
   const primary = data.store.primaryColor ?? '#475569';
+  const tc = data.templateContent;
 
   const [activeCategory, setActiveCategory] = useState<string>('All');
   const [cartOpen, setCartOpen] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
+
+  // Restore a cart saved before a guest was redirected to /customer/login (see CheckoutDrawer).
+  useEffect(() => {
+    const draft = readCartDraft(data.store.slug);
+    if (!draft || draft.length === 0) return;
+    const restored: CartItem[] = [];
+    for (const d of draft) {
+      const product = data.products.find((p) => String(p.id) === d.productId);
+      if (product) restored.push({ product, qty: d.qty });
+    }
+    if (restored.length > 0) {
+      setCart(restored);
+      setCartOpen(true);
+    }
+    clearCartDraft(data.store.slug);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.store.slug]);
 
   const categories = useMemo(() => {
     const cats = Array.from(new Set(data.products.map((p) => p.category)));
@@ -359,7 +224,7 @@ export default function RetailClassicTemplate({ data }: { data: StorefrontData }
             {data.store.shopName}
           </h1>
           <p className="font-jakarta text-base text-white/70 mt-4 max-w-md">
-            {data.store.description || 'Quality & style for every occasion'}
+            {tc?.heroDescription || data.store.description || 'Quality & style for every occasion'}
           </p>
           <button
             className="bg-white rounded-full px-6 py-2.5 font-jakarta font-bold text-sm mt-6 cursor-pointer hover:opacity-90 transition"
@@ -426,22 +291,23 @@ export default function RetailClassicTemplate({ data }: { data: StorefrontData }
         )}
       </main>
 
-      {/* ── Cart Drawer ── */}
-      <CartDrawer
-        cart={cart}
+      {/* ── Checkout ── */}
+      <CheckoutDrawer
         open={cartOpen}
-        primary={primary}
-        currencySuffix={data.store.currencySuffix}
         onClose={() => setCartOpen(false)}
-        onRemove={removeFromCart}
+        storeSlug={data.store.slug}
+        cart={cart}
+        currencySuffix={data.store.currencySuffix}
         onChangeQty={changeQty}
+        onRemove={removeFromCart}
+        onOrderPlaced={() => setCart([])}
       />
 
       {/* ── Footer ── */}
       <footer className="px-6 md:px-12 py-10 text-white" style={{ background: COLORS.ink }}>
         <p className="font-jakarta font-extrabold text-xl">{data.store.shopName}</p>
-        {data.store.openingHours && (
-          <p className="text-sm text-white/60 mt-1">{data.store.openingHours}</p>
+        {(tc?.openingHours || data.store.openingHours) && (
+          <p className="text-sm text-white/60 mt-1">{tc?.openingHours || data.store.openingHours}</p>
         )}
         {data.store.deliveryInfo && (
           <p className="text-sm text-white/60 mt-0.5">{data.store.deliveryInfo}</p>

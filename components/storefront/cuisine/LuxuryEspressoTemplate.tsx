@@ -14,6 +14,7 @@ const GOLD_DIM = 'rgba(201,168,76,0.35)';
 
 export default function LuxuryEspressoTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const tc = data.templateContent;
   const [cart, setCart] = useState<Record<number, number>>({});
   const [activeCategory, setActiveCategory] = useState('All');
 
@@ -118,7 +119,7 @@ export default function LuxuryEspressoTemplate({ data }: { data: StorefrontData 
 
           {/* Opening hours badge */}
           <p className="lx-hero-in mb-8 text-xs tracking-[0.4em] uppercase" style={{ color: GOLD_DIM }}>
-            {store.openingHours}
+            {tc?.openingHours || store.openingHours}
           </p>
 
           {/* Store name */}
@@ -134,7 +135,7 @@ export default function LuxuryEspressoTemplate({ data }: { data: StorefrontData 
           </div>
 
           <p className="lx-hero-in-3 text-lg sm:text-xl italic mb-10 max-w-sm" style={{ color: 'rgba(232,224,208,0.55)', animationDelay: '0.5s' }}>
-            {store.description}
+            {tc?.heroDescription || store.description}
           </p>
 
           <button
