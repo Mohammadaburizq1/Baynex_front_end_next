@@ -22,7 +22,7 @@ export interface CreateOrderPayload {
   deliveryMethod: DeliveryMethod;
   paymentMethod: PaymentMethod;
   deliveryFee: number;
-  discount: number;
+  discountCode?: string;
   notes?: string;
   items: CreateOrderItemPayload[];
 }
@@ -50,6 +50,7 @@ export interface OrderResponse {
   subtotal: number;
   deliveryFee: number;
   discount: number;
+  discountCode: string | null;
   total: number;
   notes: string | null;
   createdAt: string;

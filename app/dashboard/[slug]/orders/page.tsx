@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
-import { Search, Package, X, ChevronRight, Truck, Store, Phone, MapPin } from 'lucide-react';
+import { Suspense, useState, useMemo, useEffect } from 'react';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { Search, Package, X, ChevronRight, Truck, Store, Phone, MapPin, Filter } from 'lucide-react';
 import { Header } from '@/components/dashboard/Header';
 import { Button } from '@/components/ui/Button';
 import { StatusBadge } from '@/components/ui/Badge';
@@ -17,42 +18,8 @@ import {
   PAYMENT_STATUS_MAP,
   cn,
 } from '@/lib/utils';
-import type { Order, OrderStatus, PaymentStatus, PaymentMethod, FulfillmentType } from '@/lib/types';
-import type { ApiOrder } from '@/lib/api/orders';
-
-// ── Map API order → local Order ────────────────────────────────────────────────
-
-function apiToOrder(o: ApiOrder): Order {
-  return {
-    id: o.id,
-    orderNumber: o.orderNumber,
-    customerId: o.customerId ?? '',
-    customerName: o.customerName,
-    customerPhone: o.customerPhone ?? '',
-    customerEmail: o.customerEmail ?? '',
-    items: (o.items ?? []).map((item, idx) => ({
-      id: item.id ?? String(idx),
-      productId: item.productId,
-      productName: item.productName,
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      totalPrice: item.totalPrice,
-    })),
-    subtotal: o.subtotal,
-    deliveryFee: o.deliveryFee ?? 0,
-    discount: o.discount ?? 0,
-    tax: o.tax ?? 0,
-    total: o.total,
-    status: o.status,
-    paymentStatus: (o.paymentStatus ?? 'unpaid') as PaymentStatus,
-    paymentMethod: (o.paymentMethod ?? 'cash') as PaymentMethod,
-    fulfillmentType: (o.fulfillmentType ?? 'pickup') as FulfillmentType,
-    deliveryAddress: o.deliveryAddress,
-    notes: o.notes,
-    createdAt: o.createdAt,
-    updatedAt: o.updatedAt ?? o.createdAt,
-  };
-}
+import type { Order, OrderStatus } from '@/lib/types';
+import { apiOrderToOrder } from '@/lib/api/orders';
 
 // ── Status progression map ─────────────────────────────────────────────────────
 
@@ -365,8 +332,22 @@ function OrderDetailPanel({ order, onClose, onStatusChange, onCancel }: SidePane
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function OrdersPage() {
+  return (
+    <Suspense fallback={null}>
+      <OrdersPageContent />
+    </Suspense>
+  );
+}
+
+function OrdersPageContent() {
   const { store } = useStore();
   const { success } = useToast();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const customerPhoneFilter = searchParams.get('phone');
+  const customerNameForFilter = searchParams.get('name');
+  const orderIdFromUrl = searchParams.get('order');
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
@@ -382,8 +363,11 @@ export default function OrdersPage() {
       }
       try {
         const { getOrders } = await import('@/lib/api/orders');
-        const apiOrders = await getOrders();
-        setOrders(apiOrders.map(apiToOrder));
+        // A store that hasn't been synced to the backend yet has a placeholder "local-*" id —
+        // only scope the request once we have a real backend store id to scope it to.
+        const realStoreId = store.id.startsWith('local-') ? undefined : store.id;
+        const apiOrders = await getOrders(realStoreId);
+        setOrders(apiOrders.map(apiOrderToOrder));
       } catch {
         const { loadStoreOrders } = await import('@/lib/utils/store-scoped-data');
         setOrders(loadStoreOrders(store.slug));
@@ -391,14 +375,15 @@ export default function OrdersPage() {
       setLoadingOrders(false);
     }
     fetchOrders();
-  }, [store.slug]);
+  }, [store.slug, store.id]);
 
   // Filters
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState<TabKey>('all');
 
-  // Selected order (side panel)
-  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  // Selected order (side panel) — pre-opened via ?order= (e.g. the Home page's Recent Orders
+  // deep link); once `orders` finishes loading, `selectedOrder` below picks it up automatically.
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(orderIdFromUrl);
 
   // ── Derived counts for stat chips ────────────────────────────────────────────
 
@@ -423,9 +408,14 @@ export default function OrdersPage() {
         !search ||
         order.orderNumber.toLowerCase().includes(search.toLowerCase()) ||
         order.customerName.toLowerCase().includes(search.toLowerCase());
-      return matchesTab_ && matchesSearch;
+      const matchesCustomer = !customerPhoneFilter || order.customerPhone === customerPhoneFilter;
+      return matchesTab_ && matchesSearch && matchesCustomer;
     });
-  }, [orders, activeTab, search]);
+  }, [orders, activeTab, search, customerPhoneFilter]);
+
+  function clearCustomerFilter() {
+    router.replace(pathname, { scroll: false });
+  }
 
   const selectedOrder = orders.find(o => o.id === selectedOrderId) ?? null;
 
@@ -514,6 +504,23 @@ export default function OrdersPage() {
           </div>
           <span className="text-sm text-slate-500 shrink-0">Today</span>
         </div>
+
+        {/* ── Customer filter chip (arrived via ?phone= from the Customers page) ── */}
+        {customerPhoneFilter && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary-50 border border-primary-200 text-sm text-primary-700 w-fit">
+            <Filter size={14} className="shrink-0" />
+            <span>
+              Showing orders for <strong>{customerNameForFilter || customerPhoneFilter}</strong>
+            </span>
+            <button
+              onClick={clearCustomerFilter}
+              aria-label="Clear customer filter"
+              className="p-0.5 rounded hover:bg-primary-100 transition-colors cursor-pointer"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
 
         {/* ── Orders table ─────────────────────────────────────────────────── */}
         <div className="bg-white rounded-card border border-surface-200 shadow-card overflow-hidden">

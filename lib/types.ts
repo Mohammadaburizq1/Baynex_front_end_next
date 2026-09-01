@@ -106,6 +106,7 @@ export interface Order {
   subtotal: number;
   deliveryFee: number;
   discount: number;
+  discountCode?: string;
   tax: number;
   total: number;
   status: OrderStatus;

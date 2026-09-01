@@ -1,4 +1,5 @@
 import { apiRequest } from './client';
+import type { Order, PaymentMethod, PaymentStatus, FulfillmentType } from '@/lib/types';
 
 export interface ApiOrderItem {
   id?: string;
@@ -14,6 +15,7 @@ export interface ApiOrderItem {
 // only ever produce 6 of them — see STATUS_FROM_BACKEND/STATUS_TO_BACKEND below.
 export interface ApiOrder {
   id: string;
+  storeId: string;
   orderNumber: string;
   customerId?: string;
   customerName: string;
@@ -23,6 +25,7 @@ export interface ApiOrder {
   subtotal: number;
   deliveryFee?: number;
   discount?: number;
+  discountCode?: string;
   tax?: number;
   total: number;
   status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'out_for_delivery' | 'delivered' | 'cancelled' | 'refunded';
@@ -64,6 +67,7 @@ interface ApiOrderRaw {
   subtotal: number;
   deliveryFee: number;
   discount: number;
+  discountCode?: string | null;
   total: number;
   notes?: string | null;
   createdAt: string;
@@ -95,6 +99,7 @@ const STATUS_TO_BACKEND: Partial<Record<ApiOrder['status'], BackendOrderStatus>>
 function mapOrder(raw: ApiOrderRaw): ApiOrder {
   return {
     id: raw.id,
+    storeId: raw.storeId,
     orderNumber: raw.orderCode,
     customerName: raw.customerName,
     customerPhone: raw.customerPhone,
@@ -110,6 +115,7 @@ function mapOrder(raw: ApiOrderRaw): ApiOrder {
     subtotal: raw.subtotal,
     deliveryFee: raw.deliveryFee,
     discount: raw.discount,
+    discountCode: raw.discountCode ?? undefined,
     total: raw.total,
     status: STATUS_FROM_BACKEND[raw.status],
     // 'WHATSAPP_ONLY' has no equivalent in the local cash/card/online/wallet vocabulary —
@@ -124,8 +130,44 @@ function mapOrder(raw: ApiOrderRaw): ApiOrder {
   };
 }
 
-export async function getOrders(): Promise<ApiOrder[]> {
-  const raw = await apiRequest<ApiOrderRaw[]>('/api/dashboard/orders');
+// Shared UI mapper (ApiOrder -> local Order) used by both the Orders page and the dashboard
+// Home page, so the two never drift out of sync on how missing/optional fields are defaulted.
+export function apiOrderToOrder(o: ApiOrder): Order {
+  return {
+    id: o.id,
+    orderNumber: o.orderNumber,
+    customerId: o.customerId ?? '',
+    customerName: o.customerName,
+    customerPhone: o.customerPhone ?? '',
+    customerEmail: o.customerEmail ?? '',
+    items: (o.items ?? []).map((item, idx) => ({
+      id: item.id ?? String(idx),
+      productId: item.productId,
+      productName: item.productName,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      totalPrice: item.totalPrice,
+    })),
+    subtotal: o.subtotal,
+    deliveryFee: o.deliveryFee ?? 0,
+    discount: o.discount ?? 0,
+    discountCode: o.discountCode,
+    tax: o.tax ?? 0,
+    total: o.total,
+    status: o.status,
+    paymentStatus: (o.paymentStatus ?? 'unpaid') as PaymentStatus,
+    paymentMethod: (o.paymentMethod ?? 'cash') as PaymentMethod,
+    fulfillmentType: (o.fulfillmentType ?? 'pickup') as FulfillmentType,
+    deliveryAddress: o.deliveryAddress,
+    notes: o.notes,
+    createdAt: o.createdAt,
+    updatedAt: o.updatedAt ?? o.createdAt,
+  };
+}
+
+export async function getOrders(storeId?: string): Promise<ApiOrder[]> {
+  const query = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  const raw = await apiRequest<ApiOrderRaw[]>(`/api/dashboard/orders${query}`);
   return raw.map(mapOrder);
 }
 

@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { Download } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Download, BarChart2 } from 'lucide-react';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -18,15 +18,14 @@ import {
 import { Header } from '@/components/dashboard/Header';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
-import {
-  mockSalesData,
-  mockCategoryRevenue,
-  mockReportSummary,
-} from '@/lib/mock-data';
+import { useStore } from '@/contexts/StoreContext';
 import { formatCurrency } from '@/lib/utils';
+import { type Period, PERIODS, periodToRange, toIsoDate } from '@/lib/utils/report-period';
+import type { ApiDailyStoreSales, ApiTopProduct } from '@/lib/api/analytics';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -46,24 +45,31 @@ const CATEGORY_COLORS = [
   CHART_COLORS.sky,
 ];
 
-type Period = '7 Days' | '30 Days' | '3 Months' | '1 Year';
-const PERIODS: Period[] = ['7 Days', '30 Days', '3 Months', '1 Year'];
-
-const TOP_PRODUCTS = [
-  { rank: 1, name: 'Double Smash Burger',  category: 'Burgers',  revenue: 945.00,  orders: 50, avgPrice: 18.90 },
-  { rank: 2, name: 'BBQ Chicken Pizza',    category: 'Pizzas',   revenue: 834.90,  orders: 31, avgPrice: 26.90 },
-  { rank: 3, name: 'Classic Beef Burger',  category: 'Burgers',  revenue: 742.80,  orders: 58, avgPrice: 12.90 },
-  { rank: 4, name: 'Margherita Pizza',     category: 'Pizzas',   revenue: 618.30,  orders: 27, avgPrice: 22.90 },
-  { rank: 5, name: 'Chocolate Lava Cake',  category: 'Desserts', revenue: 445.50,  orders: 45, avgPrice: 9.90  },
-] as const;
-
 const MEDAL = {
   1: { label: '🥇', bg: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200' },
   2: { label: '🥈', bg: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200' },
   3: { label: '🥉', bg: 'bg-orange-50 text-orange-700 ring-1 ring-orange-200' },
 } as const;
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Date range helpers ───────────────────────────────────────────────────────
+
+// daily-store-sales only returns a row for a day that actually had sales — a day with zero
+// orders has no row at all. Fill every date in the range with 0s so the chart shows the full
+// period (including real gaps) instead of a misleadingly compressed line connecting only the
+// days that happened to have activity.
+function buildDailySeries(from: string, to: string, rows: ApiDailyStoreSales[]) {
+  const byDate = new Map(rows.map(r => [r.saleDate, r]));
+  const series: { date: string; revenue: number; orders: number }[] = [];
+  const cursor = new Date(from + 'T00:00:00Z');
+  const end = new Date(to + 'T00:00:00Z');
+  while (cursor <= end) {
+    const dateStr = toIsoDate(cursor);
+    const row = byDate.get(dateStr);
+    series.push({ date: dateStr, revenue: row?.totalRevenue ?? 0, orders: row?.orderCount ?? 0 });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return series;
+}
 
 function formatAxisDate(dateStr: string): string {
   const d = new Date(dateStr);
@@ -122,13 +128,65 @@ function CustomBarTooltip({ active, payload, label }: CustomTooltipProps) {
 // ── Page Component ────────────────────────────────────────────────────────────
 
 export default function ReportsPage() {
-  const [activePeriod, setActivePeriod] = useState<Period>('7 Days');
+  const { store } = useStore();
   const { toast } = useToast();
+  const [activePeriod, setActivePeriod] = useState<Period>('7 Days');
+  const [dailySales, setDailySales] = useState<ApiDailyStoreSales[]>([]);
+  const [topProducts, setTopProducts] = useState<ApiTopProduct[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const totalCategoryRevenue = mockCategoryRevenue.reduce(
-    (sum, c) => sum + c.revenue,
-    0,
-  );
+  const { from, to } = useMemo(() => periodToRange(activePeriod), [activePeriod]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchAnalytics() {
+      if (store.id.startsWith('local-')) {
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      try {
+        const { getDailyStoreSales, getTopProducts } = await import('@/lib/api/analytics');
+        const [sales, products] = await Promise.all([
+          getDailyStoreSales(store.id, from, to),
+          getTopProducts(store.id, from, to, 10),
+        ]);
+        if (!cancelled) {
+          setDailySales(sales);
+          setTopProducts(products);
+        }
+      } catch {
+        if (!cancelled) {
+          setDailySales([]);
+          setTopProducts([]);
+        }
+      }
+      if (!cancelled) setLoading(false);
+    }
+    fetchAnalytics();
+    return () => { cancelled = true; };
+  }, [store.id, from, to]);
+
+  const chartData = useMemo(() => buildDailySeries(from, to, dailySales), [from, to, dailySales]);
+
+  const totalRevenue = dailySales.reduce((sum, r) => sum + r.totalRevenue, 0);
+  const totalOrders = dailySales.reduce((sum, r) => sum + r.orderCount, 0);
+  const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+  const hasSales = totalOrders > 0;
+
+  // Derived from the same Top Products response rather than a second near-identical query —
+  // grouped by category, with uncategorized/deleted-product line items honestly labeled.
+  const categoryRevenue = useMemo(() => {
+    const byCategory = new Map<string, number>();
+    for (const p of topProducts) {
+      const key = p.categoryName ?? 'Uncategorized';
+      byCategory.set(key, (byCategory.get(key) ?? 0) + p.revenue);
+    }
+    return [...byCategory.entries()]
+      .map(([category, revenue]) => ({ category, revenue }))
+      .sort((a, b) => b.revenue - a.revenue);
+  }, [topProducts]);
+  const totalCategoryRevenue = categoryRevenue.reduce((sum, c) => sum + c.revenue, 0);
 
   return (
     <div className="flex flex-col min-h-full font-jakarta">
@@ -165,39 +223,45 @@ export default function ReportsPage() {
           })}
         </div>
 
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="w-8 h-8 rounded-full border-2 border-primary-500 border-t-transparent animate-spin" />
+          </div>
+        ) : !hasSales ? (
+          <Card padding="none">
+            <EmptyState
+              icon={<BarChart2 size={28} />}
+              title="No sales in this period"
+              description={`No orders were placed between ${from} and ${to}. Try a longer period, or check back once orders come in.`}
+            />
+          </Card>
+        ) : (
+        <>
         {/* ── Summary stat cards ────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <StatCard
             title="Total Revenue"
-            value={formatCurrency(mockReportSummary.totalRevenue)}
-            change={mockReportSummary.revenueChange}
-            changeLabel="vs last period"
+            value={formatCurrency(totalRevenue, store.currency)}
+            change={0}
+            changeLabel={activePeriod.toLowerCase()}
             icon="revenue"
             color="indigo"
           />
           <StatCard
             title="Total Orders"
-            value={mockReportSummary.totalOrders.toString()}
-            change={mockReportSummary.ordersChange}
-            changeLabel="vs last period"
+            value={totalOrders.toString()}
+            change={0}
+            changeLabel={activePeriod.toLowerCase()}
             icon="orders"
             color="emerald"
           />
           <StatCard
             title="Avg Order Value"
-            value={formatCurrency(mockReportSummary.avgOrderValue)}
-            change={mockReportSummary.avgOrderChange}
-            changeLabel="vs last period"
+            value={formatCurrency(avgOrderValue, store.currency)}
+            change={0}
+            changeLabel={activePeriod.toLowerCase()}
             icon="revenue"
             color="amber"
-          />
-          <StatCard
-            title="Total Customers"
-            value={mockReportSummary.totalCustomers.toString()}
-            change={mockReportSummary.customersChange}
-            changeLabel="vs last period"
-            icon="customers"
-            color="sky"
           />
         </div>
 
@@ -210,7 +274,7 @@ export default function ReportsPage() {
 
           <ResponsiveContainer width="100%" height={280}>
             <AreaChart
-              data={mockSalesData}
+              data={chartData}
               margin={{ top: 4, right: 16, left: 0, bottom: 0 }}
             >
               <defs>
@@ -302,7 +366,7 @@ export default function ReportsPage() {
 
             <ResponsiveContainer width="100%" height={220}>
               <BarChart
-                data={mockSalesData}
+                data={chartData}
                 margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
                 barCategoryGap="30%"
               >
@@ -322,6 +386,7 @@ export default function ReportsPage() {
                   axisLine={false}
                   tickLine={false}
                   width={28}
+                  allowDecimals={false}
                 />
 
                 <Tooltip content={<CustomBarTooltip />} />
@@ -336,58 +401,64 @@ export default function ReportsPage() {
             </ResponsiveContainer>
           </Card>
 
-          {/* Revenue by Category */}
+          {/* Revenue by Category — derived from the Top Products response */}
           <Card padding="md" className="lg:col-span-5">
             <CardHeader className="mb-3">
               <CardTitle>Revenue by Category</CardTitle>
             </CardHeader>
 
-            <div className="space-y-3.5" aria-label="Revenue by category breakdown">
-              {mockCategoryRevenue.map((cat, idx) => {
-                const pct = ((cat.revenue / totalCategoryRevenue) * 100).toFixed(1);
-                const barColor = CATEGORY_COLORS[idx % CATEGORY_COLORS.length];
-                return (
-                  <div key={cat.category}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-medium text-slate-700">
-                        {cat.category}
-                      </span>
-                      <span className="text-sm font-semibold text-slate-900 tabular-nums">
-                        {formatCurrency(cat.revenue)}
-                      </span>
-                    </div>
+            {categoryRevenue.length === 0 ? (
+              <p className="text-sm text-slate-400 py-4">No category data for this period.</p>
+            ) : (
+              <>
+                <div className="space-y-3.5" aria-label="Revenue by category breakdown">
+                  {categoryRevenue.map((cat, idx) => {
+                    const pct = totalCategoryRevenue > 0 ? ((cat.revenue / totalCategoryRevenue) * 100) : 0;
+                    const barColor = CATEGORY_COLORS[idx % CATEGORY_COLORS.length];
+                    return (
+                      <div key={cat.category}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-medium text-slate-700">
+                            {cat.category}
+                          </span>
+                          <span className="text-sm font-semibold text-slate-900 tabular-nums">
+                            {formatCurrency(cat.revenue, store.currency)}
+                          </span>
+                        </div>
 
-                    <div
-                      className="h-2 w-full bg-slate-100 rounded-full overflow-hidden"
-                      role="progressbar"
-                      aria-valuenow={cat.percentage}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-label={`${cat.category}: ${cat.percentage}%`}
-                    >
-                      <div
-                        className="h-full rounded-full transition-all duration-500"
-                        style={{
-                          width: `${cat.percentage}%`,
-                          backgroundColor: barColor,
-                        }}
-                      />
-                    </div>
+                        <div
+                          className="h-2 w-full bg-slate-100 rounded-full overflow-hidden"
+                          role="progressbar"
+                          aria-valuenow={Math.round(pct)}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-label={`${cat.category}: ${pct.toFixed(1)}%`}
+                        >
+                          <div
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{
+                              width: `${pct}%`,
+                              backgroundColor: barColor,
+                            }}
+                          />
+                        </div>
 
-                    <p className="text-xs text-slate-400 mt-0.5 text-right tabular-nums">
-                      {pct}%
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
+                        <p className="text-xs text-slate-400 mt-0.5 text-right tabular-nums">
+                          {pct.toFixed(1)}%
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
 
-            <div className="mt-4 pt-3.5 border-t border-slate-100 flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-500">Total</span>
-              <span className="text-sm font-bold text-slate-900 tabular-nums">
-                {formatCurrency(totalCategoryRevenue)}
-              </span>
-            </div>
+                <div className="mt-4 pt-3.5 border-t border-slate-100 flex items-center justify-between">
+                  <span className="text-xs font-medium text-slate-500">Total</span>
+                  <span className="text-sm font-bold text-slate-900 tabular-nums">
+                    {formatCurrency(totalCategoryRevenue, store.currency)}
+                  </span>
+                </div>
+              </>
+            )}
           </Card>
         </div>
 
@@ -406,6 +477,13 @@ export default function ReportsPage() {
             </Button>
           </div>
 
+          {topProducts.length === 0 ? (
+            <EmptyState
+              icon={<BarChart2 size={28} />}
+              title="No product sales in this period"
+              description="Products will show up here once they've been ordered."
+            />
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm" aria-label="Top performing products">
               <thead>
@@ -423,7 +501,7 @@ export default function ReportsPage() {
                     Revenue
                   </th>
                   <th className="text-right text-xs font-semibold text-slate-400 uppercase tracking-wide px-4 py-3 hidden md:table-cell">
-                    Orders
+                    Units Sold
                   </th>
                   <th className="text-right text-xs font-semibold text-slate-400 uppercase tracking-wide px-5 py-3 hidden md:table-cell">
                     Avg Price
@@ -431,11 +509,13 @@ export default function ReportsPage() {
                 </tr>
               </thead>
               <tbody>
-                {TOP_PRODUCTS.map((product) => {
-                  const medal = MEDAL[product.rank as keyof typeof MEDAL];
+                {topProducts.map((product, idx) => {
+                  const rank = idx + 1;
+                  const medal = MEDAL[rank as keyof typeof MEDAL];
+                  const avgPrice = product.unitsSold > 0 ? product.revenue / product.unitsSold : 0;
                   return (
                     <tr
-                      key={product.rank}
+                      key={product.productId ?? `${product.name}-${idx}`}
                       className="border-b border-slate-50 hover:bg-slate-50 transition-colors"
                     >
                       {/* Rank */}
@@ -446,13 +526,13 @@ export default function ReportsPage() {
                               'inline-flex items-center justify-center w-7 h-7 rounded-lg text-sm',
                               medal.bg,
                             ].join(' ')}
-                            aria-label={`Rank ${product.rank}`}
+                            aria-label={`Rank ${rank}`}
                           >
                             {medal.label}
                           </span>
                         ) : (
                           <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-slate-50 text-xs font-semibold text-slate-500">
-                            {product.rank}
+                            {rank}
                           </span>
                         )}
                       </td>
@@ -464,25 +544,25 @@ export default function ReportsPage() {
 
                       {/* Category */}
                       <td className="px-4 py-3.5 hidden sm:table-cell">
-                        <Badge variant="default">{product.category}</Badge>
+                        <Badge variant="default">{product.categoryName ?? 'Uncategorized'}</Badge>
                       </td>
 
                       {/* Revenue */}
                       <td className="px-4 py-3.5 text-right">
                         <span className="font-semibold text-slate-900 tabular-nums">
-                          {formatCurrency(product.revenue)}
+                          {formatCurrency(product.revenue, store.currency)}
                         </span>
                       </td>
 
-                      {/* Orders */}
+                      {/* Units Sold */}
                       <td className="px-4 py-3.5 text-right hidden md:table-cell">
-                        <span className="text-slate-700 tabular-nums">{product.orders}</span>
+                        <span className="text-slate-700 tabular-nums">{product.unitsSold}</span>
                       </td>
 
                       {/* Avg Price */}
                       <td className="px-5 py-3.5 text-right hidden md:table-cell">
                         <span className="text-slate-500 tabular-nums">
-                          {formatCurrency(product.avgPrice)}
+                          {formatCurrency(avgPrice, store.currency)}
                         </span>
                       </td>
                     </tr>
@@ -491,6 +571,7 @@ export default function ReportsPage() {
               </tbody>
             </table>
           </div>
+          )}
         </Card>
 
         {/* ── Export row ────────────────────────────────────────────────── */}
@@ -504,6 +585,8 @@ export default function ReportsPage() {
             Download Report
           </Button>
         </div>
+        </>
+        )}
 
       </main>
     </div>

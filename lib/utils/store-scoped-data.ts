@@ -8,7 +8,6 @@ import type {
   ProductCategory,
 } from '@/lib/types';
 import {
-  mockCustomers,
   mockDeliveryZones,
   mockInventory,
   mockOrders,
@@ -48,7 +47,6 @@ export function initStoreData(slug: string) {
   if (isDemoStore(slug)) return;
   writeJson(key(slug, 'products'), []);
   writeJson(key(slug, 'orders'), []);
-  writeJson(key(slug, 'customers'), []);
   writeJson(key(slug, 'inventory'), []);
   writeJson(key(slug, 'delivery_zones'), []);
 }
@@ -71,16 +69,6 @@ export function loadStoreOrders(slug: string): Order[] {
 export function saveStoreOrders(slug: string, orders: Order[]) {
   if (isDemoStore(slug)) return;
   writeJson(key(slug, 'orders'), orders);
-}
-
-export function loadStoreCustomers(slug: string): Customer[] {
-  if (isDemoStore(slug)) return mockCustomers;
-  return readJson<Customer[]>(key(slug, 'customers'), []);
-}
-
-export function saveStoreCustomers(slug: string, customers: Customer[]) {
-  if (isDemoStore(slug)) return;
-  writeJson(key(slug, 'customers'), customers);
 }
 
 export function loadStoreInventory(slug: string): InventoryItem[] {

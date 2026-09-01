@@ -10,6 +10,7 @@ import { Input, Select, Textarea } from '@/components/ui/Input';
 import { useToast } from '@/components/ui/Toast';
 import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
 import { createOrder, type DeliveryMethod, type PaymentMethod } from '@/lib/api/checkout';
+import { validateOfferCode, type DiscountValidationResult } from '@/lib/api/offers';
 import { saveCartDraft, clearCartDraft } from '@/lib/utils/cart-draft';
 
 interface CartItem {
@@ -52,6 +53,10 @@ export default function CheckoutDrawer({
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
   const [submitting, setSubmitting] = useState(false);
   const [orderCode, setOrderCode] = useState<string | null>(null);
+  const [promoCode, setPromoCode] = useState('');
+  const [applyingPromo, setApplyingPromo] = useState(false);
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const [appliedDiscount, setAppliedDiscount] = useState<DiscountValidationResult | null>(null);
 
   useEffect(() => {
     if (!open || !user) return;
@@ -61,7 +66,24 @@ export default function CheckoutDrawer({
     setPhone((prev) => prev || user.phone || '');
   }, [open, user]);
 
-  const total = cart.reduce((sum, item) => sum + (item.product.discountPrice ?? item.product.price) * item.qty, 0);
+  const subtotal = cart.reduce((sum, item) => sum + (item.product.discountPrice ?? item.product.price) * item.qty, 0);
+  const discountAmount = appliedDiscount?.amount ?? 0;
+  const total = Math.max(0, subtotal - discountAmount);
+
+  async function handleApplyPromo() {
+    if (!promoCode.trim()) return;
+    setApplyingPromo(true);
+    setPromoError(null);
+    try {
+      const result = await validateOfferCode(storeSlug, promoCode.trim(), subtotal);
+      setAppliedDiscount(result);
+    } catch (e) {
+      setAppliedDiscount(null);
+      setPromoError(e instanceof Error ? e.message : 'Invalid code.');
+    } finally {
+      setApplyingPromo(false);
+    }
+  }
 
   async function handlePlaceOrder() {
     if (!isAuthenticated) {
@@ -88,11 +110,13 @@ export default function CheckoutDrawer({
         deliveryMethod,
         paymentMethod,
         deliveryFee: 0,
-        discount: 0,
+        discountCode: appliedDiscount?.code,
         notes: notes.trim() || undefined,
         items: cart.map((item) => ({ productId: String(item.product.id), quantity: item.qty })),
       });
       setOrderCode(res.orderCode);
+      setPromoCode('');
+      setAppliedDiscount(null);
       clearCartDraft(storeSlug);
       success(`Order placed! Code ${res.orderCode}`);
       onOrderPlaced();
@@ -157,6 +181,18 @@ export default function CheckoutDrawer({
                 </div>
               );
             })}
+            {appliedDiscount && (
+              <div className="flex items-center justify-between pt-2 text-sm">
+                <span className="text-slate-500">Subtotal</span>
+                <span className="text-slate-700">{subtotal.toFixed(2)} {currencySuffix}</span>
+              </div>
+            )}
+            {appliedDiscount && (
+              <div className="flex items-center justify-between text-sm text-emerald-600">
+                <span>Discount ({appliedDiscount.code})</span>
+                <span>-{discountAmount.toFixed(2)} {currencySuffix}</span>
+              </div>
+            )}
             <div className="flex items-center justify-between pt-2">
               <span className="text-sm text-slate-500">Total</span>
               <span className="text-lg font-extrabold text-slate-900">{total.toFixed(2)} {currencySuffix}</span>
@@ -166,6 +202,30 @@ export default function CheckoutDrawer({
 
         {cart.length > 0 && (
           <>
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <Input
+                  label="Discount code (optional)"
+                  value={promoCode}
+                  onChange={(e) => { setPromoCode(e.target.value); setPromoError(null); }}
+                  placeholder="e.g. SAVE10"
+                />
+              </div>
+              <Button
+                variant="secondary"
+                loading={applyingPromo}
+                disabled={!promoCode.trim() || !!appliedDiscount}
+                onClick={handleApplyPromo}
+              >
+                Apply
+              </Button>
+            </div>
+            {promoError && <p className="text-sm text-red-600 -mt-2">{promoError}</p>}
+            {appliedDiscount && (
+              <p className="text-sm text-emerald-600 -mt-2">
+                Code &quot;{appliedDiscount.code}&quot; applied: -{discountAmount.toFixed(2)} {currencySuffix}
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <Select
                 label="Delivery"

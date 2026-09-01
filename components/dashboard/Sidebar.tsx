@@ -6,18 +6,20 @@ import { useState } from 'react';
 import {
   LayoutDashboard, ShoppingBag, ClipboardList, Truck, Package,
   BarChart2, Users, Settings, ChevronLeft, Store, CalendarDays,
-  Home, X, Palette, LogOut, Loader2,
+  Home, X, Palette, LogOut, Loader2, CreditCard, Lightbulb, Tag,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useStore } from '@/contexts/StoreContext';
 import { signOut } from '@/lib/auth/session';
 import { dashboardPath } from '@/lib/utils/dashboard-path';
-import type { BusinessType } from '@/lib/types';
+import type { BusinessType, UserRole } from '@/lib/types';
 
 interface NavItem {
   label: string;
   href: string;
   icon: React.ElementType;
+  // Omit to show to every merchant role. Present = visible only to the listed roles.
+  roles?: UserRole[];
 }
 
 type NavSection = { label: string; section?: string; icon: React.ElementType };
@@ -31,6 +33,8 @@ const NAV_SECTIONS: Record<BusinessType, NavSection[]> = {
     { label: 'Inventory', section: 'inventory', icon: Package },
     { label: 'Customers', section: 'customers', icon: Users },
     { label: 'Reports', section: 'reports', icon: BarChart2 },
+    { label: 'Insights', section: 'insights', icon: Lightbulb },
+    { label: 'Offers', section: 'offers', icon: Tag },
   ],
   retail: [
     { label: 'Home', icon: LayoutDashboard },
@@ -40,6 +44,8 @@ const NAV_SECTIONS: Record<BusinessType, NavSection[]> = {
     { label: 'Inventory', section: 'inventory', icon: Package },
     { label: 'Customers', section: 'customers', icon: Users },
     { label: 'Reports', section: 'reports', icon: BarChart2 },
+    { label: 'Insights', section: 'insights', icon: Lightbulb },
+    { label: 'Offers', section: 'offers', icon: Tag },
   ],
   real_estate: [
     { label: 'Home', icon: LayoutDashboard },
@@ -47,6 +53,8 @@ const NAV_SECTIONS: Record<BusinessType, NavSection[]> = {
     { label: 'Appointments', section: 'delivery', icon: CalendarDays },
     { label: 'Customers', section: 'customers', icon: Users },
     { label: 'Reports', section: 'reports', icon: BarChart2 },
+    { label: 'Insights', section: 'insights', icon: Lightbulb },
+    { label: 'Offers', section: 'offers', icon: Tag },
   ],
   services: [
     { label: 'Home', icon: LayoutDashboard },
@@ -55,12 +63,16 @@ const NAV_SECTIONS: Record<BusinessType, NavSection[]> = {
     { label: 'Orders', section: 'orders', icon: ClipboardList },
     { label: 'Customers', section: 'customers', icon: Users },
     { label: 'Reports', section: 'reports', icon: BarChart2 },
+    { label: 'Insights', section: 'insights', icon: Lightbulb },
+    { label: 'Offers', section: 'offers', icon: Tag },
   ],
   catalog: [
     { label: 'Home', icon: LayoutDashboard },
     { label: 'Products', section: 'products', icon: ShoppingBag },
     { label: 'Customers', section: 'customers', icon: Users },
     { label: 'Reports', section: 'reports', icon: BarChart2 },
+    { label: 'Insights', section: 'insights', icon: Lightbulb },
+    { label: 'Offers', section: 'offers', icon: Tag },
   ],
   clothing: [
     { label: 'Home', icon: LayoutDashboard },
@@ -68,6 +80,8 @@ const NAV_SECTIONS: Record<BusinessType, NavSection[]> = {
     { label: 'Orders', section: 'orders', icon: ClipboardList },
     { label: 'Customers', section: 'customers', icon: Users },
     { label: 'Reports', section: 'reports', icon: BarChart2 },
+    { label: 'Insights', section: 'insights', icon: Lightbulb },
+    { label: 'Offers', section: 'offers', icon: Tag },
   ],
 };
 
@@ -82,7 +96,10 @@ function buildNavItems(businessType: BusinessType, slug: string): NavItem[] {
 
 function bottomNavItems(businessType: BusinessType, slug: string): NavItem[] {
   const items: NavItem[] = [
-    { label: 'Store Settings', href: dashboardPath(slug, 'store-settings'), icon: Settings },
+    // Store Settings and Billing are owner-only — staff run day-to-day operations, not the
+    // store's configuration or its plan/payment. See OwnerOnlyGate for the matching page guard.
+    { label: 'Store Settings', href: dashboardPath(slug, 'store-settings'), icon: Settings, roles: ['owner'] },
+    { label: 'Billing', href: dashboardPath(slug, 'billing'), icon: CreditCard, roles: ['owner'] },
   ];
   if (businessType === 'clothing') {
     items.unshift({
@@ -103,7 +120,7 @@ interface SidebarContentProps {
 function SidebarContent({ onClose, collapsed, onToggleCollapse }: SidebarContentProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { store, businessType, dashboardSlug } = useStore();
+  const { store, businessType, dashboardSlug, userRole } = useStore();
   const [loggingOut, setLoggingOut] = useState(false);
   const navItems = buildNavItems(businessType, dashboardSlug);
   const homeHref = dashboardPath(dashboardSlug);
@@ -187,7 +204,9 @@ function SidebarContent({ onClose, collapsed, onToggleCollapse }: SidebarContent
       </nav>
 
       <div className="py-3 px-2 border-t border-sidebar-border space-y-0.5">
-        {bottomNavItems(businessType, dashboardSlug).map(item => {
+        {bottomNavItems(businessType, dashboardSlug)
+          .filter(item => !item.roles || item.roles.includes(userRole))
+          .map(item => {
           const Icon = item.icon;
           const active = isActive(item.href);
           return (

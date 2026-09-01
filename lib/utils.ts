@@ -105,3 +105,22 @@ export const PRODUCT_LABEL: Record<BusinessType, string> = {
   catalog:     'Products',
   clothing:    'Products',
 };
+
+// Whether stock/quantity tracking applies to this vertical at all — a real estate listing or a
+// service booking has no "units in stock" concept. Gates the Stock field on the product form,
+// whether the Inventory page has anything meaningful to show, and the Home page's Low Stock
+// widget.
+// Shared by the Inventory page and the Home page's Low Stock widget so the two never disagree
+// on what counts as "low." Simple fixed number rather than a per-store configurable setting —
+// nothing currently asks for that, and building a threshold-config UI for one number isn't
+// worth it yet.
+export const LOW_STOCK_THRESHOLD = 5;
+
+export const BUSINESS_TYPES_WITH_STOCK: Record<BusinessType, boolean> = {
+  retail:      true,
+  restaurant:  true,
+  real_estate: false,
+  services:    false,
+  catalog:     true,
+  clothing:    true,
+};

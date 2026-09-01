@@ -97,6 +97,7 @@ async function run() {
     salePrice: 7.99, // set so the salePrice/discountPrice field-name check below is meaningful —
                       // Jackson's non_null inclusion policy omits unset nullable fields entirely
                       // (not even as `null`), so an unset salePrice wouldn't exercise the check.
+    stock: 5, // same reasoning — unset would omit the field and the check below wouldn't exercise it
     sortOrder: 0,
   }, merchantToken);
 
@@ -121,7 +122,6 @@ async function run() {
     deliveryMethod: 'PICKUP',
     paymentMethod: 'CASH',
     deliveryFee: 0,
-    discount: 0,
     items: [{ productId: product.id, quantity: 1 }],
   }, customerToken);
 
@@ -143,7 +143,8 @@ async function run() {
   check('has slug', hasField(dashProduct, 'slug', 'string'));
   check('has available (boolean)', hasField(dashProduct, 'available', 'boolean'));
   check('has no status field', !('status' in dashProduct));
-  check('has no stock field', !('stock' in dashProduct));
+  check('has stock (real integer quantity, not a stand-in)', hasField(dashProduct, 'stock', 'number'));
+  check('stock reflects the order placed against it (5 - 1 = 4)', dashProduct.stock === 4);
 
   // ── lib/api/orders.ts (ApiOrderRaw via getOrders) ───────────────────────────────
   console.log('\nGET /api/dashboard/orders  (orders.ts ApiOrderRaw)');
@@ -166,6 +167,106 @@ async function run() {
   check('has name', hasField(myStore, 'name', 'string'));
   check('has slug', hasField(myStore, 'slug', 'string'));
   check('has status', hasField(myStore, 'status', 'string'));
+
+  // ── lib/api/customers.ts (ApiCustomerSummary via getCustomerSummaries) ─────────
+  console.log('\nGET /api/dashboard/customers  (customers.ts ApiCustomerSummary)');
+  const customers = await get(`/api/dashboard/customers?storeId=${store.id}`, merchantToken);
+  const customerSummary = customers.find(c => c.customerId === customer.user.id);
+  check('found the seeded customer, grouped by their real customerId', !!customerSummary);
+  check('has customerId (not customer_id)', hasField(customerSummary, 'customerId', 'string'));
+  check('has name', hasField(customerSummary, 'name', 'string'));
+  check('has phone', hasField(customerSummary, 'phone', 'string'));
+  check('has orderCount (number, not order_count)', hasField(customerSummary, 'orderCount', 'number'));
+  check('has totalSpent (number, not total_spent)', hasField(customerSummary, 'totalSpent', 'number'));
+  check('has firstOrderAt', hasField(customerSummary, 'firstOrderAt', 'string'));
+  check('has lastOrderAt', hasField(customerSummary, 'lastOrderAt', 'string'));
+
+  // ── lib/api/analytics.ts (ApiDailyStoreSales via getDailyStoreSales) ───────────
+  // Wide-ish window (yesterday..tomorrow, UTC-safe) so the seeded order lands inside it
+  // regardless of what time this script runs relative to the server's UTC day boundary.
+  const todayUtc = new Date();
+  const isoDate = d => d.toISOString().slice(0, 10);
+  const yesterday = new Date(todayUtc); yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  const tomorrow = new Date(todayUtc); tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  const rangeFrom = isoDate(yesterday);
+  const rangeTo = isoDate(tomorrow);
+
+  console.log('\nGET /api/dashboard/analytics/daily-store-sales  (analytics.ts ApiDailyStoreSales)');
+  const dailySales = await get(`/api/dashboard/analytics/daily-store-sales?storeId=${store.id}&from=${rangeFrom}&to=${rangeTo}`, merchantToken);
+  const todaySales = dailySales.find(r => r.storeId === store.id);
+  check('found a row for the seeded order\'s day', !!todaySales);
+  check('has saleDate', hasField(todaySales, 'saleDate', 'string'));
+  check('has totalRevenue (number, not total_revenue)', hasField(todaySales, 'totalRevenue', 'number'));
+  check('has orderCount (number, not order_count)', hasField(todaySales, 'orderCount', 'number'));
+
+  // ── lib/api/analytics.ts (ApiTopProduct via getTopProducts) ────────────────────
+  console.log('\nGET /api/dashboard/analytics/top-products  (analytics.ts ApiTopProduct)');
+  const topProducts = await get(`/api/dashboard/analytics/top-products?storeId=${store.id}&from=${rangeFrom}&to=${rangeTo}&limit=10`, merchantToken);
+  const topProduct = topProducts.find(p => p.productId === product.id);
+  check('found the seeded product in top products', !!topProduct);
+  check('has productId (not product_id)', hasField(topProduct, 'productId', 'string'));
+  check('has name', hasField(topProduct, 'name', 'string'));
+  check('has unitsSold (number, not units_sold)', hasField(topProduct, 'unitsSold', 'number'));
+  check('has revenue (number)', hasField(topProduct, 'revenue', 'number'));
+
+  // ── lib/api/offers.ts (ApiOffer via getOffers/createOffer) + checkout.ts discountCode ──
+  console.log('\nPOST/GET /api/dashboard/offers  (offers.ts ApiOffer)');
+  const offer = await post('/api/dashboard/offers', {
+    storeId: store.id,
+    code: `SHAPE${ts}`,
+    discountType: 'PERCENTAGE',
+    discountValue: 10,
+  }, merchantToken);
+  check('has storeId', hasField(offer, 'storeId', 'string'));
+  check('has code', hasField(offer, 'code', 'string'));
+  check('has discountType', hasField(offer, 'discountType', 'string'));
+  check('has discountValue (number)', hasField(offer, 'discountValue', 'number'));
+  check('has timesUsed (number, starts 0)', hasField(offer, 'timesUsed', 'number') && offer.timesUsed === 0);
+  check('has active (boolean)', hasField(offer, 'active', 'boolean'));
+  check('has no minOrderAmount when unset', !('minOrderAmount' in offer));
+
+  const dashOffers = await get(`/api/dashboard/offers?storeId=${store.id}`, merchantToken);
+  check('created offer appears in dashboard list', !!dashOffers.find(o => o.id === offer.id));
+
+  console.log('\nPOST /api/public/stores/{slug}/offers/validate  (offers.ts DiscountValidationResult)');
+  const validation = await post(`/api/public/stores/${slug}/offers/validate`, {
+    code: offer.code,
+    subtotal: 9.99,
+  });
+  check('has offerId', hasField(validation, 'offerId', 'string'));
+  check('has code', hasField(validation, 'code', 'string'));
+  check('has amount (number) computed as 10% of 9.99', hasField(validation, 'amount', 'number') && Math.abs(validation.amount - 0.999) < 0.01);
+
+  console.log('\nPOST /api/public/stores/{slug}/orders with discountCode  (checkout.ts OrderResponse)');
+  const discountedOrder = await post(`/api/public/stores/${slug}/orders`, {
+    customerName: 'Shape Audit Customer',
+    customerPhone: '+15559990000',
+    deliveryMethod: 'PICKUP',
+    paymentMethod: 'CASH',
+    deliveryFee: 0,
+    discountCode: offer.code,
+    items: [{ productId: product.id, quantity: 1 }],
+  }, customerToken);
+  check('has discountCode (not omitted) reflecting the applied code', discountedOrder.discountCode === offer.code);
+  // Checkout uses salePrice (7.99) over price (9.99) when set — see product seeding above.
+  check('discount amount server-computed as 10% of the actual sale price (7.99)', Math.abs(discountedOrder.discount - 0.799) < 0.01);
+  check('total = subtotal - discount', Math.abs(discountedOrder.total - (discountedOrder.subtotal - discountedOrder.discount)) < 0.001);
+
+  const offerAfterUse = await get(`/api/dashboard/offers?storeId=${store.id}`, merchantToken);
+  const usedOffer = offerAfterUse.find(o => o.id === offer.id);
+  check('timesUsed incremented after the order that used it', usedOffer.timesUsed === 1);
+
+  console.log('\nPOST /api/public/stores/{slug}/orders — raw discount field no longer accepted');
+  const rawDiscountOrder = await post(`/api/public/stores/${slug}/orders`, {
+    customerName: 'Shape Audit Customer',
+    customerPhone: '+15559990000',
+    deliveryMethod: 'PICKUP',
+    paymentMethod: 'CASH',
+    deliveryFee: 0,
+    discount: 999, // a raw client-submitted discount is no longer part of the DTO — must be ignored
+    items: [{ productId: product.id, quantity: 1 }],
+  }, customerToken);
+  check('an arbitrary raw "discount" field sent by a direct API call is silently ignored (not applied)', rawDiscountOrder.discount === 0);
 
   console.log(`\n${failures === 0 ? 'ALL SHAPES OK' : `${failures} SHAPE MISMATCH(ES) FOUND`}`);
   process.exit(failures === 0 ? 0 : 1);

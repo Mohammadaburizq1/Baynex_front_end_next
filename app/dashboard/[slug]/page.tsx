@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { ShoppingBag, Package, AlertTriangle, Copy, Check, ExternalLink } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ShoppingBag, AlertTriangle, Copy, Check, ExternalLink, Package } from 'lucide-react';
 import { Header } from '@/components/dashboard/Header';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { Button } from '@/components/ui/Button';
@@ -11,53 +12,92 @@ import { StatusBadge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useStore } from '@/contexts/StoreContext';
 import { dashboardPath } from '@/lib/utils/dashboard-path';
-import {
-  computeDashboardStats,
-  isDemoStore,
-  loadStoreCustomers,
-  loadStoreOrders,
-  loadStoreProducts,
-  lowStockProducts,
-} from '@/lib/utils/store-scoped-data';
+import { isDemoStore } from '@/lib/utils/store-scoped-data';
 import {
   formatCurrency,
   formatRelativeTime,
   ORDER_STATUS_MAP,
+  BUSINESS_TYPES_WITH_STOCK,
+  LOW_STOCK_THRESHOLD,
 } from '@/lib/utils';
 import type { Order, Product } from '@/lib/types';
 
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
-  const { user, store, dashboardSlug, storeNotSynced, syncStoreNow, updateStore } = useStore();
+  const { user, store, businessType, dashboardSlug, storeNotSynced, syncStoreNow, updateStore } = useStore();
+  const router = useRouter();
   const [copied, setCopied] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState('');
-  // Real backend product count for the publish gate — null while unknown/loading. Kept separate
-  // from `products` below, which is the mock local-storage catalog the stat cards use.
+  // Real backend product count for the publish gate — null while unknown/loading.
   const [hasRealProducts, setHasRealProducts] = useState<boolean | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
 
   useEffect(() => {
-    setOrders(loadStoreOrders(store.slug));
-    setProducts(loadStoreProducts(store.slug));
-  }, [store.slug]);
+    let cancelled = false;
+    async function fetchData() {
+      setLoadingData(true);
+      const token = localStorage.getItem('sl_access_token') ?? localStorage.getItem('authToken');
+      if (!token) {
+        const { loadStoreOrders, loadStoreProducts } = await import('@/lib/utils/store-scoped-data');
+        if (!cancelled) {
+          setOrders(loadStoreOrders(store.slug));
+          setProducts(loadStoreProducts(store.slug));
+          setLoadingData(false);
+        }
+        return;
+      }
+      try {
+        const [{ getOrders, apiOrderToOrder }, { getProducts, apiProductToProduct }] = await Promise.all([
+          import('@/lib/api/orders'),
+          import('@/lib/api/products'),
+        ]);
+        // A store that hasn't been synced to the backend yet has a placeholder "local-*" id —
+        // only scope the request once we have a real backend store id to scope it to.
+        const realStoreId = store.id.startsWith('local-') ? undefined : store.id;
+        const [apiOrders, apiProducts] = await Promise.all([getOrders(realStoreId), getProducts(realStoreId)]);
+        if (cancelled) return;
+        setOrders(apiOrders.map(apiOrderToOrder));
+        setProducts(apiProducts.map(apiProductToProduct));
+      } catch {
+        if (!cancelled) {
+          const { loadStoreOrders, loadStoreProducts } = await import('@/lib/utils/store-scoped-data');
+          setOrders(loadStoreOrders(store.slug));
+          setProducts(loadStoreProducts(store.slug));
+        }
+      }
+      if (!cancelled) setLoadingData(false);
+    }
+    fetchData();
+    return () => { cancelled = true; };
+  }, [store.slug, store.id]);
 
-  const customers = useMemo(
-    () => loadStoreCustomers(store.slug),
-    [store.slug],
-  );
-
-  const stats = useMemo(
-    () => computeDashboardStats(orders, products, customers),
-    [orders, products, customers],
-  );
-
-  const lowStockItems = useMemo(
-    () => lowStockProducts(products),
-    [products],
-  );
+  // Same aggregation computeDashboardStats used to do, fed by real orders/products instead of
+  // the mock catalog. "Total Customers" is the count of distinct phone/email identifiers seen
+  // across this store's real orders — there's no real Customer backend model to count instead.
+  const stats = useMemo(() => {
+    const delivered = orders.filter(o => o.status === 'delivered');
+    const totalRevenue = delivered.reduce((sum, o) => sum + o.total, 0);
+    const avgOrderValue = delivered.length > 0 ? totalRevenue / delivered.length : 0;
+    const activeProducts = products.filter(p => p.status === 'active').length;
+    const pendingOrders = orders.filter(o => o.status === 'pending' || o.status === 'confirmed').length;
+    const customerKeys = new Set(
+      orders
+        .map(o => o.customerPhone || o.customerEmail)
+        .filter((v): v is string => Boolean(v)),
+    );
+    return {
+      totalRevenue,
+      totalOrders: orders.length,
+      avgOrderValue,
+      activeProducts,
+      totalCustomers: customerKeys.size,
+      pendingOrders,
+    };
+  }, [orders, products]);
 
   const isDemo = isDemoStore(store.slug);
   const selectedTemplate =
@@ -118,8 +158,23 @@ export default function DashboardPage() {
   };
 
   const pendingOrders = stats.pendingOrders;
-  const recentOrders = orders.slice(0, 5);
+  const recentOrders = useMemo(
+    () =>
+      [...orders]
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 5),
+    [orders],
+  );
   const currency = store.currency || 'MYR';
+
+  // Real stock data now (added alongside the Inventory ticket) — only meaningful for verticals
+  // that track it at all; a real-estate/services store's products always read stock 0 (never
+  // tracked), which would otherwise look like a false "everything is out of stock" alarm.
+  const tracksStock = BUSINESS_TYPES_WITH_STOCK[businessType] ?? false;
+  const lowStockItems = useMemo(
+    () => (tracksStock ? products.filter(p => p.stock <= LOW_STOCK_THRESHOLD).slice(0, 5) : []),
+    [products, tracksStock],
+  );
 
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState('');
@@ -293,6 +348,12 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {loadingData ? (
+        <div className="flex items-center justify-center py-16">
+          <div className="w-8 h-8 rounded-full border-2 border-primary-500 border-t-transparent animate-spin" />
+        </div>
+        ) : (
+        <>
         {/* ── Stat grid ──────────────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
           <StatCard
@@ -396,8 +457,8 @@ export default function DashboardPage() {
                       return (
                         <tr
                           key={order.id}
-                          className="hover:bg-surface-50 transition-colors duration-150 cursor-default"
-                          title="Order detail coming soon"
+                          onClick={() => router.push(`${dashboardPath(dashboardSlug, 'orders')}?order=${order.id}`)}
+                          className="hover:bg-surface-50 transition-colors duration-150 cursor-pointer"
                         >
                           <td className="px-5 py-3 font-medium text-slate-900">
                             {order.orderNumber}
@@ -426,7 +487,7 @@ export default function DashboardPage() {
             )}
           </Card>
 
-          {/* Quick Actions + Low Stock — 1/3 */}
+          {/* Quick Actions — 1/3 */}
           <div className="space-y-4">
             <Card padding="md">
               <CardHeader>
@@ -465,46 +526,48 @@ export default function DashboardPage() {
               </div>
             </Card>
 
-            {/* Low Stock Alert */}
+            {/* Low Stock — real data; only for verticals that track stock at all */}
             {lowStockItems.length > 0 && (
-            <Card padding="md">
-              <CardHeader>
-                <div className="flex items-center gap-2">
-                  <AlertTriangle size={16} className="text-amber-500" />
-                  <CardTitle>Low Stock Alert</CardTitle>
-                </div>
-              </CardHeader>
-
-              <ul className="space-y-2">
-                {lowStockItems.map(item => (
-                  <li
-                    key={item.name}
-                    className="flex items-center justify-between py-1.5"
+              <Card padding="md">
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle size={16} className="text-amber-500" />
+                    <CardTitle>Low Stock</CardTitle>
+                  </div>
+                  <Link
+                    href={dashboardPath(dashboardSlug, 'inventory')}
+                    className="text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors duration-150"
                   >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-7 h-7 rounded-md bg-surface-100 flex items-center justify-center shrink-0">
-                        <Package size={13} className="text-slate-400" />
+                    View all
+                  </Link>
+                </CardHeader>
+                <ul className="space-y-2">
+                  {lowStockItems.map(item => (
+                    <li key={item.id} className="flex items-center justify-between py-1.5">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-7 h-7 rounded-md bg-surface-100 flex items-center justify-center shrink-0">
+                          <Package size={13} className="text-slate-400" />
+                        </div>
+                        <span className="text-sm text-slate-700 truncate">{item.name}</span>
                       </div>
-                      <span className="text-sm text-slate-700 truncate">
-                        {item.name}
-                      </span>
-                    </div>
-                    {item.stock === 0 ? (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 shrink-0 ml-2">
-                        Out of stock
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 shrink-0 ml-2">
-                        {item.stock} left
-                      </span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </Card>
+                      {item.stock === 0 ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 shrink-0 ml-2">
+                          Out of stock
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 shrink-0 ml-2">
+                          {item.stock} left
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </Card>
             )}
           </div>
         </div>
+        </>
+        )}
       </main>
     </>
   );

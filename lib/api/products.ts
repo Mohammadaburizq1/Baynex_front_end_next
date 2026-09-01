@@ -1,4 +1,5 @@
 import { apiRequest } from './client';
+import type { Product } from '@/lib/types';
 
 // UI-facing shape consumed by the dashboard Products page (apiToProduct/productToForm).
 export interface ApiProduct {
@@ -14,7 +15,11 @@ export interface ApiProduct {
   categoryId?: string;
   imageUrl?: string;
   images?: string[];
-  stock: number;
+  // null = not tracked (see BUSINESS_TYPES_WITH_STOCK in lib/utils.ts). The Inventory page reads
+  // this field directly (not through apiProductToProduct, which collapses null to 0 for the
+  // Products-page/Home-widget's simpler always-a-number badge logic) so it can tell "genuinely
+  // zero" apart from "never set" and report honestly.
+  stock: number | null;
   sku?: string;
   available?: boolean;
   status: 'active' | 'inactive' | 'out_of_stock';
@@ -24,11 +29,13 @@ export interface ApiProduct {
   updatedAt?: string;
 }
 
-// Actual shape of com.byonix.shoplink.api.dto.ProductDtos.ProductResponse. The backend has no
-// stock/quantity model (only `available`), no free-text `category` (only a `categoryId` UUID —
-// resolving it to a name would need a separate categories fetch, not done here), and no
-// `tags`/`images` array (`imageUrl` is the only image). None of those can be faithfully mapped;
-// see mapProduct's comments for exactly what each ApiProduct field is derived from.
+// Actual shape of com.byonix.shoplink.api.dto.ProductDtos.ProductResponse. No free-text
+// `category` (only a `categoryId` UUID — resolving it to a name would need a separate categories
+// fetch, not done here), and no `tags`/`images` array (`imageUrl` is the only image). Neither can
+// be faithfully mapped; see mapProduct's comments for exactly what each ApiProduct field is
+// derived from. `stock` is null when the backend isn't tracking it for this product (a service,
+// or a product predating the stock migration) — see BUSINESS_TYPES_WITH_STOCK in lib/utils.ts
+// for which verticals even show a stock field at all.
 interface ApiProductRaw {
   id: string;
   storeId: string;
@@ -42,6 +49,7 @@ interface ApiProductRaw {
   sku?: string | null;
   available: boolean;
   featured: boolean;
+  stock?: number | null;
 }
 
 function mapProduct(raw: ApiProductRaw): ApiProduct {
@@ -58,9 +66,8 @@ function mapProduct(raw: ApiProductRaw): ApiProduct {
     category: '', // no category name on this response — only categoryId (a UUID)
     imageUrl: raw.imageUrl ?? undefined,
     images: raw.imageUrl ? [raw.imageUrl] : [],
-    // Backend has no inventory count — 1/0 stands in for "in stock"/"out of stock" so the
-    // existing stock>0 gates keep working; it is never a real quantity.
-    stock: raw.available ? 1 : 0,
+    // Preserved as-is (including null) — see the ApiProduct.stock comment above.
+    stock: raw.stock ?? null,
     sku: raw.sku ?? undefined,
     available: raw.available,
     // Backend only has the `available` boolean — 'out_of_stock' can't be derived (no real
@@ -86,9 +93,7 @@ function slugify(name: string): string {
 
 // Maps the UI form's Partial<ApiProduct> into com.byonix.shoplink.api.dto.ProductDtos.ProductRequest.
 // storeId and nameEn/slug are @NotNull/@NotBlank on the backend, so they're always sent even
-// though ApiProduct itself only carries storeId optionally. `stock` is intentionally dropped —
-// the backend has nowhere to persist it (see the ApiProductRaw comment above); the Products
-// page's "Stock" field is not yet backed by anything server-side.
+// though ApiProduct itself only carries storeId optionally.
 function toProductRequest(storeId: string, data: Partial<ApiProduct>) {
   return {
     storeId,
@@ -103,11 +108,35 @@ function toProductRequest(storeId: string, data: Partial<ApiProduct>) {
     available: data.status !== 'inactive' && data.status !== 'out_of_stock',
     featured: data.featured ?? false,
     sortOrder: 0,
+    stock: data.stock,
   };
 }
 
-export async function getProducts(): Promise<ApiProduct[]> {
-  const raw = await apiRequest<ApiProductRaw[]>('/api/dashboard/products');
+// Shared UI mapper (ApiProduct -> local Product) used by both the Products page and the
+// dashboard Home page, so the two never drift out of sync on how fields are defaulted.
+export function apiProductToProduct(p: ApiProduct): Product {
+  return {
+    id: p.id,
+    name: p.name,
+    description: p.description ?? '',
+    price: p.price,
+    comparePrice: p.comparePrice ?? p.discountPrice,
+    category: p.category ?? '',
+    categoryId: p.categoryId ?? p.category ?? '',
+    images: p.images ?? (p.imageUrl ? [p.imageUrl] : []),
+    stock: p.stock ?? 0,
+    sku: p.sku ?? '',
+    status: p.status,
+    featured: p.featured ?? false,
+    tags: p.tags ?? [],
+    createdAt: p.createdAt ?? new Date().toISOString(),
+    updatedAt: p.updatedAt ?? new Date().toISOString(),
+  };
+}
+
+export async function getProducts(storeId?: string): Promise<ApiProduct[]> {
+  const query = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
+  const raw = await apiRequest<ApiProductRaw[]>(`/api/dashboard/products${query}`);
   return raw.map(mapProduct);
 }
 

@@ -9,6 +9,7 @@ import { Poppins } from 'next/font/google';
 import { useToast } from '@/components/ui/Toast';
 import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
 import { createOrder, type DeliveryMethod, type PaymentMethod } from '@/lib/api/checkout';
+import { validateOfferCode, type DiscountValidationResult } from '@/lib/api/offers';
 import { saveCartDraft, clearCartDraft, readCartDraft } from '@/lib/utils/cart-draft';
 
 const bungee = Bungee({ subsets: ['latin'], weight: ['400'], display: 'swap' });
@@ -143,6 +144,10 @@ function CheckoutPanel({
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
   const [submitting, setSubmitting] = useState(false);
   const [orderCode, setOrderCode] = useState<string | null>(null);
+  const [promoCode, setPromoCode] = useState('');
+  const [applyingPromo, setApplyingPromo] = useState(false);
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const [appliedDiscount, setAppliedDiscount] = useState<DiscountValidationResult | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -151,9 +156,26 @@ function CheckoutPanel({
     setPhone((prev) => prev || user.phone || '');
   }, [user]);
 
-  const total = cart.reduce((sum, item) => {
+  const subtotal = cart.reduce((sum, item) => {
     return sum + (item.product.discountPrice ?? item.product.price) * item.qty;
   }, 0);
+  const discountAmount = appliedDiscount?.amount ?? 0;
+  const total = Math.max(0, subtotal - discountAmount);
+
+  async function handleApplyPromo() {
+    if (!promoCode.trim()) return;
+    setApplyingPromo(true);
+    setPromoError(null);
+    try {
+      const result = await validateOfferCode(storeSlug, promoCode.trim(), subtotal);
+      setAppliedDiscount(result);
+    } catch (e) {
+      setAppliedDiscount(null);
+      setPromoError(e instanceof Error ? e.message : 'Invalid code.');
+    } finally {
+      setApplyingPromo(false);
+    }
+  }
 
   const handleWhatsAppOrder = () => {
     if (!whatsappNumber) return;
@@ -195,10 +217,12 @@ function CheckoutPanel({
         deliveryMethod,
         paymentMethod,
         deliveryFee: 0,
-        discount: 0,
+        discountCode: appliedDiscount?.code,
         items: cart.map((item) => ({ productId: String(item.product.id), quantity: item.qty })),
       });
       setOrderCode(res.orderCode);
+      setPromoCode('');
+      setAppliedDiscount(null);
       clearCartDraft(storeSlug);
       success(`Order placed! Code ${res.orderCode}`);
       onOrderPlaced();
@@ -307,7 +331,47 @@ function CheckoutPanel({
           })}
         </div>
 
+        {/* Discount code */}
+        <div className="flex items-center gap-2 mb-3">
+          <input
+            value={promoCode}
+            onChange={(e) => { setPromoCode(e.target.value); setPromoError(null); }}
+            placeholder="Discount code"
+            className={`${poppins.className} text-sm px-3 py-2 flex-1`}
+            style={{ border: '3px solid #111', borderRadius: '10px', background: C.white, color: C.black }}
+            disabled={!!appliedDiscount}
+          />
+          <button
+            onClick={handleApplyPromo}
+            disabled={!promoCode.trim() || !!appliedDiscount || applyingPromo}
+            className={`${poppins.className} font-black text-xs cursor-pointer px-4 py-2`}
+            style={{
+              border: '3px solid #111',
+              borderRadius: '10px',
+              background: C.black,
+              color: C.mustard,
+              opacity: !promoCode.trim() || !!appliedDiscount || applyingPromo ? 0.6 : 1,
+            }}
+          >
+            {applyingPromo ? '...' : 'APPLY'}
+          </button>
+        </div>
+        {promoError && (
+          <p className={`${poppins.className} text-xs mb-2`} style={{ color: C.ketchup }}>{promoError}</p>
+        )}
+        {appliedDiscount && (
+          <p className={`${poppins.className} font-bold text-xs mb-2`} style={{ color: '#0A8A3F' }}>
+            &quot;{appliedDiscount.code}&quot; applied: -{discountAmount.toFixed(2)} {currencySuffix}
+          </p>
+        )}
+
         {/* Total */}
+        {appliedDiscount && (
+          <div className="flex items-center justify-between mb-1">
+            <span className={`${poppins.className} font-bold text-sm`} style={{ color: C.black }}>Subtotal</span>
+            <span className={`${poppins.className} font-bold text-sm`} style={{ color: C.black }}>{subtotal.toFixed(2)} {currencySuffix}</span>
+          </div>
+        )}
         <div className="flex items-center justify-between mb-3">
           <span className={`${bungee.className} text-lg`} style={{ color: C.black }}>
             TOTAL

@@ -2,13 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Store, Tag, Globe, Power, Palette } from 'lucide-react';
+import { Store, Tag, Globe, Power, Palette, Users, UserPlus, Mail, X } from 'lucide-react';
 import { Header } from '@/components/dashboard/Header';
+import { OwnerOnlyGate } from '@/components/dashboard/OwnerOnlyGate';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Input, Select, Textarea, Toggle } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
+import type { StaffList } from '@/lib/api/staff';
 import { useStore } from '@/contexts/StoreContext';
 import { dashboardPath } from '@/lib/utils/dashboard-path';
 import { cn } from '@/lib/utils';
@@ -38,6 +41,14 @@ const TIMEZONE_OPTIONS = [
 ];
 
 export default function StoreSettingsPage() {
+  return (
+    <OwnerOnlyGate pageTitle="Store Settings" description="Store settings are only visible to the store owner.">
+      <StoreSettingsContent />
+    </OwnerOnlyGate>
+  );
+}
+
+function StoreSettingsContent() {
   const { store, updateStore, dashboardSlug } = useStore();
   const { success, error: toastError } = useToast();
 
@@ -85,6 +96,83 @@ export default function StoreSettingsPage() {
   const [savingBiz, setSavingBiz] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [noProductsError, setNoProductsError] = useState(false);
+
+  // ── Team / staff ─────────────────────────────────────────────────────────
+  const [staff, setStaff] = useState<StaffList | null>(null);
+  const [loadingStaff, setLoadingStaff] = useState(true);
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteName, setInviteName] = useState('');
+  const [inviteError, setInviteError] = useState('');
+  const [inviting, setInviting] = useState(false);
+  const [busyStaffId, setBusyStaffId] = useState<string | null>(null);
+
+  async function loadStaff() {
+    if (store.id.startsWith('local-')) {
+      setLoadingStaff(false);
+      return;
+    }
+    setLoadingStaff(true);
+    try {
+      const { getStaff } = await import('@/lib/api/staff');
+      setStaff(await getStaff(store.id));
+    } catch {
+      setStaff(null);
+    }
+    setLoadingStaff(false);
+  }
+
+  useEffect(() => {
+    loadStaff();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.id]);
+
+  async function handleInviteStaff() {
+    if (!inviteEmail.trim() || !inviteEmail.includes('@')) {
+      setInviteError('Enter a valid email address.');
+      return;
+    }
+    setInviting(true);
+    setInviteError('');
+    try {
+      const { inviteStaff } = await import('@/lib/api/staff');
+      const result = await inviteStaff(store.id, inviteEmail.trim(), inviteName.trim() || undefined);
+      success(`Invite sent to ${result.email}.`);
+      setInviteModalOpen(false);
+      setInviteEmail('');
+      setInviteName('');
+      await loadStaff();
+    } catch (e) {
+      setInviteError(e instanceof Error ? e.message : 'Could not send invite. Please try again.');
+    }
+    setInviting(false);
+  }
+
+  async function handleRevokeInvite(inviteId: string) {
+    setBusyStaffId(inviteId);
+    try {
+      const { revokeStaffInvite } = await import('@/lib/api/staff');
+      await revokeStaffInvite(inviteId);
+      success('Invite revoked.');
+      await loadStaff();
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : 'Could not revoke the invite. Please try again.');
+    }
+    setBusyStaffId(null);
+  }
+
+  async function handleRemoveStaff(memberId: string, memberName: string) {
+    setBusyStaffId(memberId);
+    try {
+      const { deactivateStaff } = await import('@/lib/api/staff');
+      await deactivateStaff(memberId);
+      success(`${memberName} removed from the team.`);
+      await loadStaff();
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : 'Could not remove this team member. Please try again.');
+    }
+    setBusyStaffId(null);
+  }
 
   async function handleSaveInfo() {
     setSavingInfo(true);
@@ -331,6 +419,115 @@ export default function StoreSettingsPage() {
             </div>
           </div>
         </Card>
+
+        {/* ── Team ───────────────────────────────────────────────────── */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-primary-100 rounded-lg">
+                <Users size={16} className="text-primary-600" />
+              </div>
+              <CardTitle>Team</CardTitle>
+            </div>
+            <Button
+              size="sm"
+              icon={<UserPlus size={14} />}
+              onClick={() => setInviteModalOpen(true)}
+              disabled={store.id.startsWith('local-')}
+            >
+              Invite Staff
+            </Button>
+          </CardHeader>
+          <CardDescription className="mb-4">
+            Staff accounts can manage products, orders, and delivery for this store. They can&apos;t see Billing or Store Settings.
+          </CardDescription>
+
+          {loadingStaff ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="w-6 h-6 rounded-full border-2 border-primary-500 border-t-transparent animate-spin" />
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {(!staff || (staff.members.length === 0 && staff.pendingInvites.length === 0)) && (
+                <p className="text-sm text-slate-500 py-2">No staff invited yet — you&apos;re the only one with access to this store.</p>
+              )}
+              {staff?.members.map(m => (
+                <div key={m.id} className="flex items-center justify-between py-2 px-3 rounded-lg bg-surface-50">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-900 truncate">{m.fullName}</p>
+                    <p className="text-xs text-slate-500 truncate">{m.email}</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Badge variant={m.active ? 'success' : 'default'}>{m.active ? 'Active' : 'Disabled'}</Badge>
+                    {m.active && (
+                      <button
+                        onClick={() => handleRemoveStaff(m.id, m.fullName)}
+                        disabled={busyStaffId === m.id}
+                        aria-label={`Remove ${m.fullName} from the team`}
+                        className="h-7 w-7 flex items-center justify-center rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {staff?.pendingInvites.map(inv => (
+                <div key={inv.id} className="flex items-center justify-between py-2 px-3 rounded-lg bg-amber-50">
+                  <div className="min-w-0 flex items-center gap-2">
+                    <Mail size={14} className="text-amber-500 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-900 truncate">{inv.fullName || inv.email}</p>
+                      <p className="text-xs text-slate-500 truncate">{inv.email}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Badge variant="warning">Invite Pending</Badge>
+                    <button
+                      onClick={() => handleRevokeInvite(inv.id)}
+                      disabled={busyStaffId === inv.id}
+                      aria-label={`Revoke invite for ${inv.email}`}
+                      className="h-7 w-7 flex items-center justify-center rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        <Modal
+          open={inviteModalOpen}
+          onClose={() => { setInviteModalOpen(false); setInviteError(''); }}
+          title="Invite a staff member"
+          description="They'll get an email with a link to set their own password and join this store."
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setInviteModalOpen(false)} disabled={inviting}>Cancel</Button>
+              <Button onClick={handleInviteStaff} loading={inviting}>Send Invite</Button>
+            </>
+          }
+        >
+          <div className="space-y-4">
+            <Input
+              label="Email"
+              type="email"
+              value={inviteEmail}
+              onChange={e => setInviteEmail(e.target.value)}
+              placeholder="teammate@example.com"
+              autoFocus
+            />
+            <Input
+              label="Name (optional)"
+              value={inviteName}
+              onChange={e => setInviteName(e.target.value)}
+              placeholder="Their name"
+            />
+            {inviteError && <p className="text-sm text-red-600">{inviteError}</p>}
+          </div>
+        </Modal>
 
         {/* ── Section 4: Storefront customization (clothing) ───────── */}
         {(store.businessType === 'clothing' || store.theme?.startsWith('clothing-')) && (

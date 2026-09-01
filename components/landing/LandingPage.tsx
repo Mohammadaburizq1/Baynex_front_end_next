@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import AnimatedBackground from './AnimatedBackground';
 import { Pricing as PricingBlock } from '@/components/blocks/pricing';
+import { PRICING_PLANS } from '@/lib/data/pricing-plans';
 
 /* ─── Design tokens ─────────────────────────────────────────────────── */
 const C = {
@@ -333,65 +334,6 @@ function HowItWorks() {
     </section>
   );
 }
-
-const PRICING_PLANS = [
-  {
-    name: 'STARTER',
-    price: '0',
-    yearlyPrice: '0',
-    period: 'per month',
-    features: [
-      '1 Store',
-      '20 Products',
-      'WhatsApp orders',
-      'Basic delivery zones',
-      'Basic reports',
-      'Community support',
-    ],
-    description: 'Perfect for individuals launching their first store',
-    buttonText: 'Start for Free',
-    href: '/onboarding',
-    isPopular: false,
-  },
-  {
-    name: 'BASIC',
-    price: '19',
-    yearlyPrice: '15',
-    period: 'per month',
-    features: [
-      '1 Store',
-      '100 Products',
-      'Orders dashboard',
-      'Inventory tracking',
-      'Customer CRM',
-      'Offers & discounts',
-      'Advanced reports',
-    ],
-    description: 'Ideal for growing merchants ready to scale',
-    buttonText: 'Get Started',
-    href: '/onboarding',
-    isPopular: true,
-  },
-  {
-    name: 'PRO',
-    price: '49',
-    yearlyPrice: '39',
-    period: 'per month',
-    features: [
-      'Unlimited stores',
-      'Unlimited products',
-      'Priority WhatsApp support',
-      'Custom domain',
-      'Advanced analytics',
-      'API access',
-      'Dedicated account manager',
-    ],
-    description: 'For established businesses with full control',
-    buttonText: 'Contact Sales',
-    href: '/onboarding',
-    isPopular: false,
-  },
-];
 
 function Pricing() {
   return (

@@ -16,31 +16,10 @@ import {
   formatCurrency,
   PRODUCT_STATUS_MAP,
   PRODUCT_LABEL,
+  BUSINESS_TYPES_WITH_STOCK,
 } from '@/lib/utils';
 import type { Product, ProductStatus } from '@/lib/types';
-import type { ApiProduct } from '@/lib/api/products';
-
-// ── Map API product → local Product ────────────────────────────────────────────
-
-function apiToProduct(p: ApiProduct): Product {
-  return {
-    id: p.id,
-    name: p.name,
-    description: p.description ?? '',
-    price: p.price,
-    comparePrice: p.comparePrice ?? p.discountPrice,
-    category: p.category ?? '',
-    categoryId: p.categoryId ?? p.category ?? '',
-    images: p.images ?? (p.imageUrl ? [p.imageUrl] : []),
-    stock: p.stock ?? 0,
-    sku: p.sku ?? '',
-    status: p.status,
-    featured: p.featured ?? false,
-    tags: p.tags ?? [],
-    createdAt: p.createdAt ?? new Date().toISOString(),
-    updatedAt: p.updatedAt ?? new Date().toISOString(),
-  };
-}
+import { apiProductToProduct, type ApiProduct } from '@/lib/api/products';
 
 // ── Form state ─────────────────────────────────────────────────────────────────
 
@@ -104,8 +83,11 @@ export default function ProductsPage() {
       }
       try {
         const { getProducts } = await import('@/lib/api/products');
-        const apiProducts = await getProducts();
-        setProducts(apiProducts.map(apiToProduct));
+        // A store that hasn't been synced to the backend yet has a placeholder "local-*" id —
+        // only scope the request once we have a real backend store id to scope it to.
+        const realStoreId = store.id.startsWith('local-') ? undefined : store.id;
+        const apiProducts = await getProducts(realStoreId);
+        setProducts(apiProducts.map(apiProductToProduct));
       } catch {
         const { loadStoreProducts } = await import('@/lib/utils/store-scoped-data');
         setProducts(loadStoreProducts(store.slug));
@@ -113,7 +95,7 @@ export default function ProductsPage() {
       setLoadingProducts(false);
     }
     fetchProducts();
-  }, [store.slug]);
+  }, [store.slug, store.id]);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -195,7 +177,10 @@ export default function ProductsPage() {
         description: form.description,
         price: Number(form.price),
         comparePrice: form.comparePrice ? Number(form.comparePrice) : undefined,
-        stock: Number(form.stock) || 0,
+        // Only send a stock value for verticals that track it at all — for real estate/services
+        // this stays undefined, so the backend leaves it null ("not tracked") rather than
+        // recording a meaningless 0.
+        stock: tracksStock ? (Number(form.stock) || 0) : undefined,
         category: categoryObj?.name ?? form.categoryId,
         categoryId: form.categoryId || undefined,
         status: form.status,
@@ -204,11 +189,11 @@ export default function ProductsPage() {
 
       if (editingProduct) {
         const updated = await updateProduct(editingProduct.id, store.id, payload);
-        setProducts(prev => prev.map(p => p.id === editingProduct.id ? apiToProduct(updated) : p));
+        setProducts(prev => prev.map(p => p.id === editingProduct.id ? apiProductToProduct(updated) : p));
         success('Product updated successfully.');
       } else {
         const created = await createProduct(store.id, payload);
-        setProducts(prev => [apiToProduct(created), ...prev]);
+        setProducts(prev => [apiProductToProduct(created), ...prev]);
         success('Product added successfully.');
       }
       closeModal();
@@ -239,6 +224,7 @@ export default function ProductsPage() {
   // ── Label based on business type ────────────────────────────────────────────
 
   const pageLabel = PRODUCT_LABEL[businessType] ?? 'Products';
+  const tracksStock = BUSINESS_TYPES_WITH_STOCK[businessType] ?? false;
 
   // ── Category / status select options ────────────────────────────────────────
 
@@ -354,18 +340,20 @@ export default function ProductsPage() {
                       )}
                     </div>
 
-                    {/* Stock */}
-                    <div className="flex items-center gap-1.5">
-                      {product.stock === 0 ? (
-                        <Badge variant="danger">Out of stock</Badge>
-                      ) : product.stock < 10 ? (
-                        <Badge variant="warning">{product.stock} left</Badge>
-                      ) : (
-                        <span className="text-xs text-slate-500">
-                          {product.stock} in stock
-                        </span>
-                      )}
-                    </div>
+                    {/* Stock — only meaningful for verticals that track it */}
+                    {tracksStock && (
+                      <div className="flex items-center gap-1.5">
+                        {product.stock === 0 ? (
+                          <Badge variant="danger">Out of stock</Badge>
+                        ) : product.stock < 10 ? (
+                          <Badge variant="warning">{product.stock} left</Badge>
+                        ) : (
+                          <span className="text-xs text-slate-500">
+                            {product.stock} in stock
+                          </span>
+                        )}
+                      </div>
+                    )}
 
                     {/* Status */}
                     <StatusBadge
@@ -470,15 +458,17 @@ export default function ProductsPage() {
             />
           </div>
 
-          <Input
-            label="Stock"
-            type="number"
-            min="0"
-            step="1"
-            placeholder="0"
-            value={form.stock}
-            onChange={e => handleFieldChange('stock', e.target.value)}
-          />
+          {tracksStock && (
+            <Input
+              label="Stock"
+              type="number"
+              min="0"
+              step="1"
+              placeholder="0"
+              value={form.stock}
+              onChange={e => handleFieldChange('stock', e.target.value)}
+            />
+          )}
 
           <Select
             label="Status"
