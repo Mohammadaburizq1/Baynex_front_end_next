@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Search, Plus, Pencil, Trash2, ShoppingBag } from 'lucide-react';
 import { Header } from '@/components/dashboard/Header';
+import { SectionAccessGate } from '@/components/dashboard/SectionAccessGate';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge, StatusBadge } from '@/components/ui/Badge';
@@ -61,7 +62,8 @@ function productToForm(p: Product): ProductForm {
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function ProductsPage() {
-  const { store, businessType } = useStore();
+  const { store, businessType, permissions } = useStore();
+  const canEdit = permissions.PRODUCTS === 'EDIT';
   const { success, error: toastError } = useToast();
 
   const categories = useMemo(
@@ -240,7 +242,7 @@ export default function ProductsPage() {
   ];
 
   return (
-    <>
+    <SectionAccessGate section="PRODUCTS" pageTitle={pageLabel}>
       <Header
         title={pageLabel}
         subtitle={`Manage your ${pageLabel.toLowerCase()}`}
@@ -273,13 +275,15 @@ export default function ProductsPage() {
               onChange={e => setStatusFilter(e.target.value)}
               className="w-36"
             />
-            <Button
-              variant="primary"
-              icon={<Plus size={16} />}
-              onClick={openAdd}
-            >
-              Add Item
-            </Button>
+            {canEdit && (
+              <Button
+                variant="primary"
+                icon={<Plus size={16} />}
+                onClick={openAdd}
+              >
+                Add Item
+              </Button>
+            )}
           </div>
         </div>
 
@@ -293,7 +297,7 @@ export default function ProductsPage() {
             icon={<ShoppingBag size={28} />}
             title="No products found"
             description="Try adjusting your filters or add a new product."
-            action={{ label: `Add ${pageLabel.slice(0, -1)}`, onClick: openAdd }}
+            action={canEdit ? { label: `Add ${pageLabel.slice(0, -1)}`, onClick: openAdd } : undefined}
           />
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -362,24 +366,26 @@ export default function ProductsPage() {
                     />
 
                     {/* Actions */}
-                    <div className="flex gap-2 mt-auto pt-2 border-t border-surface-200">
-                      <button
-                        aria-label={`Edit ${product.name}`}
-                        onClick={() => openEdit(product)}
-                        className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-md text-xs font-medium text-slate-600 bg-surface-100 hover:bg-surface-200 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
-                      >
-                        <Pencil size={13} />
-                        Edit
-                      </button>
-                      <button
-                        aria-label={`Delete ${product.name}`}
-                        onClick={() => setDeleteTarget(product)}
-                        className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-md text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
-                      >
-                        <Trash2 size={13} />
-                        Delete
-                      </button>
-                    </div>
+                    {canEdit && (
+                      <div className="flex gap-2 mt-auto pt-2 border-t border-surface-200">
+                        <button
+                          aria-label={`Edit ${product.name}`}
+                          onClick={() => openEdit(product)}
+                          className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-md text-xs font-medium text-slate-600 bg-surface-100 hover:bg-surface-200 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+                        >
+                          <Pencil size={13} />
+                          Edit
+                        </button>
+                        <button
+                          aria-label={`Delete ${product.name}`}
+                          onClick={() => setDeleteTarget(product)}
+                          className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-md text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                        >
+                          <Trash2 size={13} />
+                          Delete
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </Card>
               );
@@ -509,6 +515,6 @@ export default function ProductsPage() {
         variant="danger"
         loading={deleting}
       />
-    </>
+    </SectionAccessGate>
   );
 }

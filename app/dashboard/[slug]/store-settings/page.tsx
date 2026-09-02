@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Store, Tag, Globe, Power, Palette, Users, UserPlus, Mail, X } from 'lucide-react';
+import { Store, Tag, Globe, Power, Palette, Users, UserPlus, Mail, X, ShieldCheck } from 'lucide-react';
 import { Header } from '@/components/dashboard/Header';
 import { OwnerOnlyGate } from '@/components/dashboard/OwnerOnlyGate';
 import { Button } from '@/components/ui/Button';
@@ -12,6 +12,7 @@ import { Input, Select, Textarea, Toggle } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import type { StaffList } from '@/lib/api/staff';
+import { ALL_EDIT_GRID, type DashboardSection, type PermissionGrid, type PermissionLevel } from '@/lib/api/permissions';
 import { useStore } from '@/contexts/StoreContext';
 import { dashboardPath } from '@/lib/utils/dashboard-path';
 import { cn } from '@/lib/utils';
@@ -29,6 +30,17 @@ const CURRENCY_OPTIONS = [
   { value: 'SGD', label: 'SGD — Singapore Dollar' },
   { value: 'USD', label: 'USD — US Dollar' },
   { value: 'IDR', label: 'IDR — Indonesian Rupiah' },
+];
+
+// Matches the backend's DashboardSection enum. Inventory/Insights aren't listed separately — they
+// ride on PRODUCTS/REPORTS respectively (see Sidebar.tsx's SECTION_FOR_NAV for the same mapping).
+const PERMISSION_SECTIONS: { section: DashboardSection; label: string }[] = [
+  { section: 'PRODUCTS', label: 'Products & Inventory' },
+  { section: 'ORDERS', label: 'Orders' },
+  { section: 'DELIVERY', label: 'Delivery' },
+  { section: 'CUSTOMERS', label: 'Customers' },
+  { section: 'REPORTS', label: 'Reports & Insights' },
+  { section: 'OFFERS', label: 'Offers' },
 ];
 
 const TIMEZONE_OPTIONS = [
@@ -107,6 +119,12 @@ function StoreSettingsContent() {
   const [inviting, setInviting] = useState(false);
   const [busyStaffId, setBusyStaffId] = useState<string | null>(null);
 
+  // ── Team / staff — per-section permissions ─────────────────────────────────
+  const [permTarget, setPermTarget] = useState<{ id: string; name: string } | null>(null);
+  const [permGrid, setPermGrid] = useState<PermissionGrid>(ALL_EDIT_GRID);
+  const [loadingPerm, setLoadingPerm] = useState(false);
+  const [savingPerm, setSavingPerm] = useState(false);
+
   async function loadStaff() {
     if (store.id.startsWith('local-')) {
       setLoadingStaff(false);
@@ -172,6 +190,35 @@ function StoreSettingsContent() {
       toastError(e instanceof Error ? e.message : 'Could not remove this team member. Please try again.');
     }
     setBusyStaffId(null);
+  }
+
+  async function openPermissions(memberId: string, memberName: string) {
+    setPermTarget({ id: memberId, name: memberName });
+    setPermGrid(ALL_EDIT_GRID);
+    setLoadingPerm(true);
+    try {
+      const { getStaffPermissions } = await import('@/lib/api/permissions');
+      setPermGrid(await getStaffPermissions(memberId));
+    } catch {
+      toastError('Could not load permissions for this team member.');
+    }
+    setLoadingPerm(false);
+  }
+
+  async function handleSavePermissions() {
+    if (!permTarget) return;
+    setSavingPerm(true);
+    try {
+      const { updateStaffPermissions } = await import('@/lib/api/permissions');
+      const grants = (Object.entries(permGrid) as [DashboardSection, PermissionLevel][])
+        .map(([section, level]) => ({ section, level }));
+      await updateStaffPermissions(permTarget.id, grants);
+      success(`Permissions updated for ${permTarget.name}.`);
+      setPermTarget(null);
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : 'Could not save permissions. Please try again.');
+    }
+    setSavingPerm(false);
   }
 
   async function handleSaveInfo() {
@@ -461,6 +508,15 @@ function StoreSettingsContent() {
                     <Badge variant={m.active ? 'success' : 'default'}>{m.active ? 'Active' : 'Disabled'}</Badge>
                     {m.active && (
                       <button
+                        onClick={() => openPermissions(m.id, m.fullName)}
+                        aria-label={`Manage permissions for ${m.fullName}`}
+                        className="h-7 w-7 flex items-center justify-center rounded-md text-slate-400 hover:text-primary-600 hover:bg-primary-50 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+                      >
+                        <ShieldCheck size={14} />
+                      </button>
+                    )}
+                    {m.active && (
+                      <button
                         onClick={() => handleRemoveStaff(m.id, m.fullName)}
                         disabled={busyStaffId === m.id}
                         aria-label={`Remove ${m.fullName} from the team`}
@@ -497,6 +553,43 @@ function StoreSettingsContent() {
             </div>
           )}
         </Card>
+
+        <Modal
+          open={!!permTarget}
+          onClose={() => setPermTarget(null)}
+          title={permTarget ? `Permissions — ${permTarget.name}` : 'Permissions'}
+          description="Sections left unset default to full access, same as before this existed."
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setPermTarget(null)} disabled={savingPerm}>Cancel</Button>
+              <Button onClick={handleSavePermissions} loading={savingPerm} disabled={loadingPerm}>Save</Button>
+            </>
+          }
+        >
+          {loadingPerm ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="w-6 h-6 rounded-full border-2 border-primary-500 border-t-transparent animate-spin" />
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {PERMISSION_SECTIONS.map(({ section, label }) => (
+                <div key={section} className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium text-slate-700">{label}</span>
+                  <Select
+                    className="w-32"
+                    value={permGrid[section]}
+                    onChange={e => setPermGrid(prev => ({ ...prev, [section]: e.target.value as PermissionLevel }))}
+                    options={[
+                      { value: 'NONE', label: 'No access' },
+                      { value: 'VIEW', label: 'View only' },
+                      { value: 'EDIT', label: 'Full access' },
+                    ]}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </Modal>
 
         <Modal
           open={inviteModalOpen}

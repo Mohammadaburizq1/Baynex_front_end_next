@@ -4,6 +4,7 @@ import { Suspense, useState, useMemo, useEffect } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { Search, Package, X, ChevronRight, Truck, Store, Phone, MapPin, Filter } from 'lucide-react';
 import { Header } from '@/components/dashboard/Header';
+import { SectionAccessGate } from '@/components/dashboard/SectionAccessGate';
 import { Button } from '@/components/ui/Button';
 import { StatusBadge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
@@ -140,12 +141,13 @@ function StatusTimeline({ currentStatus }: { currentStatus: OrderStatus }) {
 
 interface SidePanelProps {
   order: Order;
+  canEdit: boolean;
   onClose: () => void;
   onStatusChange: (orderId: string, next: OrderStatus) => void;
   onCancel: (orderId: string) => void;
 }
 
-function OrderDetailPanel({ order, onClose, onStatusChange, onCancel }: SidePanelProps) {
+function OrderDetailPanel({ order, canEdit, onClose, onStatusChange, onCancel }: SidePanelProps) {
   const nextAction = STATUS_NEXT_ACTION[order.status];
   const isFinal =
     order.status === 'delivered' ||
@@ -303,7 +305,7 @@ function OrderDetailPanel({ order, onClose, onStatusChange, onCancel }: SidePane
           </section>
         </div>
 
-        {!isFinal && (
+        {!isFinal && canEdit && (
           <div className="px-5 py-4 border-t border-surface-200 space-y-2 shrink-0">
             {nextAction && (
               <Button
@@ -340,7 +342,8 @@ export default function OrdersPage() {
 }
 
 function OrdersPageContent() {
-  const { store } = useStore();
+  const { store, permissions } = useStore();
+  const canEdit = permissions.ORDERS === 'EDIT';
   const { success } = useToast();
   const router = useRouter();
   const pathname = usePathname();
@@ -455,7 +458,7 @@ function OrdersPageContent() {
   }
 
   return (
-    <>
+    <SectionAccessGate section="ORDERS" pageTitle="Orders">
       <Header
         title="Orders"
         subtitle="Manage and track customer orders"
@@ -652,11 +655,12 @@ function OrdersPageContent() {
       {selectedOrder && (
         <OrderDetailPanel
           order={selectedOrder}
+          canEdit={canEdit}
           onClose={() => setSelectedOrderId(null)}
           onStatusChange={handleStatusChange}
           onCancel={handleCancel}
         />
       )}
-    </>
+    </SectionAccessGate>
   );
 }

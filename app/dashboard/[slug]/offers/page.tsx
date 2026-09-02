@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Plus, Pencil, Trash2, Tag } from 'lucide-react';
 import { Header } from '@/components/dashboard/Header';
+import { SectionAccessGate } from '@/components/dashboard/SectionAccessGate';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge, StatusBadge } from '@/components/ui/Badge';
@@ -72,8 +73,9 @@ function formToPayload(form: OfferForm): OfferFormData {
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function OffersPage() {
-  const { store } = useStore();
+  const { store, permissions } = useStore();
   const { success, error: toastError } = useToast();
+  const canEdit = permissions.OFFERS === 'EDIT';
 
   const [offers, setOffers] = useState<ApiOffer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -187,15 +189,17 @@ export default function OffersPage() {
   }
 
   return (
-    <>
+    <SectionAccessGate section="OFFERS" pageTitle="Offers">
       <Header title="Offers" subtitle="Create discount codes customers can apply at checkout" />
 
       <main className="flex-1 overflow-y-auto p-4 md:p-6 space-y-5">
-        <div className="flex justify-end">
-          <Button variant="primary" icon={<Plus size={16} />} onClick={openAdd}>
-            New Code
-          </Button>
-        </div>
+        {canEdit && (
+          <div className="flex justify-end">
+            <Button variant="primary" icon={<Plus size={16} />} onClick={openAdd}>
+              New Code
+            </Button>
+          </div>
+        )}
 
         {loading ? (
           <div className="flex items-center justify-center py-16">
@@ -206,7 +210,7 @@ export default function OffersPage() {
             icon={<Tag size={28} />}
             title="No discount codes yet"
             description="Create a code like SAVE10 to offer customers a percentage or fixed discount at checkout."
-            action={{ label: 'New Code', onClick: openAdd }}
+            action={canEdit ? { label: 'New Code', onClick: openAdd } : undefined}
           />
         ) : (
           <Card padding="none" className="overflow-hidden">
@@ -220,7 +224,7 @@ export default function OffersPage() {
                     <th className="px-4 py-3 font-medium">Uses</th>
                     <th className="px-4 py-3 font-medium">Expires</th>
                     <th className="px-4 py-3 font-medium">Status</th>
-                    <th className="px-4 py-3 font-medium text-right">Actions</th>
+                    {canEdit && <th className="px-4 py-3 font-medium text-right">Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -246,24 +250,26 @@ export default function OffersPage() {
                           <StatusBadge colorClass="bg-surface-200 text-slate-600" label="Inactive" />
                         )}
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            aria-label={`Edit ${o.code}`}
-                            onClick={() => openEdit(o)}
-                            className="p-1.5 rounded-md text-slate-500 hover:bg-surface-100 hover:text-slate-700 transition-colors duration-150 cursor-pointer"
-                          >
-                            <Pencil size={14} />
-                          </button>
-                          <button
-                            aria-label={`Delete ${o.code}`}
-                            onClick={() => setDeleteTarget(o)}
-                            className="p-1.5 rounded-md text-red-500 hover:bg-red-50 transition-colors duration-150 cursor-pointer"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </td>
+                      {canEdit && (
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              aria-label={`Edit ${o.code}`}
+                              onClick={() => openEdit(o)}
+                              className="p-1.5 rounded-md text-slate-500 hover:bg-surface-100 hover:text-slate-700 transition-colors duration-150 cursor-pointer"
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              aria-label={`Delete ${o.code}`}
+                              onClick={() => setDeleteTarget(o)}
+                              className="p-1.5 rounded-md text-red-500 hover:bg-red-50 transition-colors duration-150 cursor-pointer"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -388,6 +394,6 @@ export default function OffersPage() {
         variant="danger"
         loading={deleting}
       />
-    </>
+    </SectionAccessGate>
   );
 }

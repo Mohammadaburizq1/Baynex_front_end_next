@@ -6,12 +6,18 @@ import { mockUser } from '@/lib/mock-data';
 import { buildStoreFromSaved, readSavedStore } from '@/lib/utils/store-from-local';
 import { isClothingTemplateId } from '@/lib/data/clothing-presets';
 import { loadTemplateContentForSlug } from '@/lib/utils/clothing-content';
+import { ALL_EDIT_GRID, type PermissionGrid } from '@/lib/api/permissions';
 
 interface StoreContextValue {
   store: Store;
   user: User;
   businessType: BusinessType;
   userRole: UserRole;
+  // Effective per-section access grid. Owners are always ALL_EDIT_GRID (no fetch, they're never
+  // gated). Defaults to ALL_EDIT_GRID while a staff member's real grid is still loading — a
+  // transient fetch failure or the initial render shouldn't lock out someone who actually has
+  // full access, same fail-open reasoning as the backend's own unset-section default.
+  permissions: PermissionGrid;
   dashboardSlug: string;
   sidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
@@ -95,6 +101,7 @@ interface StoreProviderProps {
 export function StoreProvider({ children, slug }: StoreProviderProps) {
   const [store, setStore] = useState<Store>(() => storeForSlug(slug));
   const [user, setUser] = useState<User>(mockUser);
+  const [permissions, setPermissions] = useState<PermissionGrid>(ALL_EDIT_GRID);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [storeNotSynced, setStoreNotSynced] = useState(false);
 
@@ -110,14 +117,25 @@ export function StoreProvider({ children, slug }: StoreProviderProps) {
       try {
         const { getMe } = await import('@/lib/api/auth');
         const apiUser = await getMe();
+        const role = apiUser.role.toLowerCase().includes('owner') ? 'owner'
+          : apiUser.role.toLowerCase().includes('staff') ? 'staff'
+          : 'owner';
         setUser({
           id: apiUser.id,
           name: apiUser.name,
           email: apiUser.email,
-          role: apiUser.role.toLowerCase().includes('owner') ? 'owner'
-            : apiUser.role.toLowerCase().includes('staff') ? 'staff'
-            : 'owner',
+          role,
         });
+
+        // Owners are never gated by the grid — skip the fetch, stay on ALL_EDIT_GRID. Staff get
+        // their real effective grid; a fetch failure leaves the ALL_EDIT_GRID default in place
+        // (fail-open, same reasoning as the type comment above).
+        if (role === 'staff') {
+          try {
+            const { getMyPermissions } = await import('@/lib/api/permissions');
+            setPermissions(await getMyPermissions());
+          } catch { /* keep ALL_EDIT_GRID */ }
+        }
       } catch { /* keep mock user */ }
 
       // 2. Load stores — separate try/catch so failure here doesn't skip sync check
@@ -182,6 +200,7 @@ export function StoreProvider({ children, slug }: StoreProviderProps) {
       user,
       businessType: store.businessType,
       userRole: user.role,
+      permissions,
       dashboardSlug: slug,
       sidebarOpen,
       setSidebarOpen,

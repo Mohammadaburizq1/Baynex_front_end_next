@@ -6,6 +6,7 @@ import {
   Users, AlertTriangle, CheckCircle2, Sparkles,
 } from 'lucide-react';
 import { Header } from '@/components/dashboard/Header';
+import { SectionAccessGate } from '@/components/dashboard/SectionAccessGate';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useStore } from '@/contexts/StoreContext';
@@ -237,6 +238,7 @@ export default function InsightsPage() {
   );
 
   return (
+    <SectionAccessGate section="REPORTS" pageTitle="Insights">
     <div className="flex flex-col min-h-full font-jakarta">
       <Header title="Insights" subtitle="Plain-language observations from your real data" />
 
@@ -308,5 +310,6 @@ export default function InsightsPage() {
         )}
       </main>
     </div>
+    </SectionAccessGate>
   );
 }

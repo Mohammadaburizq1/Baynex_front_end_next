@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Plus, Pencil, Trash2, MapPin, Clock, ShoppingBag, Truck } from 'lucide-react';
 import { Header } from '@/components/dashboard/Header';
+import { SectionAccessGate } from '@/components/dashboard/SectionAccessGate';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -25,7 +26,8 @@ const DEFAULT_ZONE: Omit<DeliveryZone, 'id'> = {
 
 export default function DeliveryPage() {
   const { success, error } = useToast();
-  const { store } = useStore();
+  const { store, permissions } = useStore();
+  const canEdit = permissions.DELIVERY === 'EDIT';
   const [zones, setZones] = useState<DeliveryZone[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -232,6 +234,7 @@ export default function DeliveryPage() {
   }
 
   return (
+    <SectionAccessGate section="DELIVERY" pageTitle="Delivery">
     <div className="min-h-screen bg-slate-50">
       <Header title="Delivery" subtitle="Configure delivery zones and fees" />
 
@@ -246,14 +249,16 @@ export default function DeliveryPage() {
                   <h2 className="text-base font-semibold text-slate-900">Delivery Zones</h2>
                   <p className="text-sm text-slate-500 mt-0.5">{zones.length} zone{zones.length !== 1 ? 's' : ''} configured</p>
                 </div>
-                <Button
-                  size="sm"
-                  icon={<Plus size={15} />}
-                  onClick={openAddModal}
-                  aria-label="Add delivery zone"
-                >
-                  Add Zone
-                </Button>
+                {canEdit && (
+                  <Button
+                    size="sm"
+                    icon={<Plus size={15} />}
+                    onClick={openAddModal}
+                    aria-label="Add delivery zone"
+                  >
+                    Add Zone
+                  </Button>
+                )}
               </div>
 
               {loading ? (
@@ -263,7 +268,7 @@ export default function DeliveryPage() {
                   icon={<Truck size={32} />}
                   title="No delivery zones"
                   description="Add a delivery zone to start accepting orders."
-                  action={{ label: 'Add Zone', onClick: openAddModal }}
+                  action={canEdit ? { label: 'Add Zone', onClick: openAddModal } : undefined}
                 />
               ) : (
                 <ul className="divide-y divide-surface-200">
@@ -278,6 +283,7 @@ export default function DeliveryPage() {
                             <Toggle
                               checked={zone.isActive}
                               onChange={active => handleToggleZone(zone.id, active)}
+                              disabled={!canEdit}
                               aria-label={`Toggle ${zone.name}`}
                             />
                             <div className="min-w-0">
@@ -296,22 +302,24 @@ export default function DeliveryPage() {
                           </div>
 
                           {/* Action buttons */}
-                          <div className="flex items-center gap-1 shrink-0">
-                            <button
-                              onClick={() => openEditModal(zone)}
-                              aria-label={`Edit ${zone.name}`}
-                              className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
-                            >
-                              <Pencil size={15} />
-                            </button>
-                            <button
-                              onClick={() => setDeleteTarget(zone)}
-                              aria-label={`Delete ${zone.name}`}
-                              className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                          </div>
+                          {canEdit && (
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={() => openEditModal(zone)}
+                                aria-label={`Edit ${zone.name}`}
+                                className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                              >
+                                <Pencil size={15} />
+                              </button>
+                              <button
+                                onClick={() => setDeleteTarget(zone)}
+                                aria-label={`Delete ${zone.name}`}
+                                className="h-8 w-8 flex items-center justify-center rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          )}
                         </div>
 
                         {/* Info grid */}
@@ -467,5 +475,6 @@ export default function DeliveryPage() {
         loading={deleting}
       />
     </div>
+    </SectionAccessGate>
   );
 }

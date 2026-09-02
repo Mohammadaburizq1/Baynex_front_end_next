@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Search, Users, UserPlus, Repeat, ShoppingBag } from 'lucide-react';
 import { Header } from '@/components/dashboard/Header';
+import { SectionAccessGate } from '@/components/dashboard/SectionAccessGate';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -90,7 +91,7 @@ export default function CustomersPage() {
   }
 
   return (
-    <>
+    <SectionAccessGate section="CUSTOMERS" pageTitle="Customers">
       <Header title="Customers" subtitle="Derived from your store's real orders" />
 
       <main className="flex-1 overflow-y-auto p-4 md:p-6 space-y-5">
@@ -195,6 +196,6 @@ export default function CustomersPage() {
           )}
         </Card>
       </main>
-    </>
+    </SectionAccessGate>
   );
 }

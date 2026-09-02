@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Search, Package, AlertTriangle, XCircle, Check } from 'lucide-react';
 import { Header } from '@/components/dashboard/Header';
+import { SectionAccessGate } from '@/components/dashboard/SectionAccessGate';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -24,9 +25,10 @@ function stockStatus(stock: number | null): 'not_set' | 'out_of_stock' | 'low_st
 }
 
 export default function InventoryPage() {
-  const { store, businessType } = useStore();
+  const { store, businessType, permissions } = useStore();
   const { success, error: toastError } = useToast();
   const tracksStock = BUSINESS_TYPES_WITH_STOCK[businessType] ?? false;
+  const canEdit = permissions.PRODUCTS === 'EDIT';
 
   const [products, setProducts] = useState<ApiProduct[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,7 +89,7 @@ export default function InventoryPage() {
 
   if (!tracksStock) {
     return (
-      <>
+      <SectionAccessGate section="PRODUCTS" pageTitle="Inventory">
         <Header title="Inventory" subtitle="Track and manage stock levels" />
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
           <EmptyState
@@ -96,12 +98,12 @@ export default function InventoryPage() {
             description="Stock tracking is for product-based stores. This business type doesn't sell trackable units, so there's nothing to show here."
           />
         </main>
-      </>
+      </SectionAccessGate>
     );
   }
 
   return (
-    <>
+    <SectionAccessGate section="PRODUCTS" pageTitle="Inventory">
       <Header title="Inventory" subtitle="Track and manage stock levels" />
 
       <main className="flex-1 overflow-y-auto p-4 md:p-6 space-y-5">
@@ -203,7 +205,7 @@ export default function InventoryPage() {
                                   <Check size={13} />
                                 </button>
                               </div>
-                            ) : (
+                            ) : canEdit ? (
                               <button
                                 onClick={() => setInlineEdit({ productId: product.id, value: String(product.stock ?? 0) })}
                                 aria-label={`Set stock for ${product.name}`}
@@ -213,6 +215,10 @@ export default function InventoryPage() {
                               >
                                 {product.stock === null ? 'Not set' : product.stock}
                               </button>
+                            ) : (
+                              <span className={`font-semibold ${product.stock === null ? 'text-slate-400 italic' : 'text-slate-900'}`}>
+                                {product.stock === null ? 'Not set' : product.stock}
+                              </span>
                             )}
                           </td>
                           <td className="px-4 py-3">
@@ -231,6 +237,6 @@ export default function InventoryPage() {
           )}
         </Card>
       </main>
-    </>
+    </SectionAccessGate>
   );
 }

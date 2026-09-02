@@ -13,6 +13,7 @@ import { useStore } from '@/contexts/StoreContext';
 import { signOut } from '@/lib/auth/session';
 import { dashboardPath } from '@/lib/utils/dashboard-path';
 import type { BusinessType, UserRole } from '@/lib/types';
+import type { DashboardSection, PermissionGrid } from '@/lib/api/permissions';
 
 interface NavItem {
   label: string;
@@ -85,13 +86,36 @@ const NAV_SECTIONS: Record<BusinessType, NavSection[]> = {
   ],
 };
 
-function buildNavItems(businessType: BusinessType, slug: string): NavItem[] {
+// Not every nav item is a distinct backend permission section — Inventory reads the same
+// PRODUCTS data as Products, Insights reads the same REPORTS data as Reports (see the backend's
+// DashboardSection enum / CatalogService.dashboardProducts, OrderService's analytics methods).
+// 'Home' has no entry and is always visible.
+const SECTION_FOR_NAV: Record<string, DashboardSection> = {
+  products: 'PRODUCTS',
+  inventory: 'PRODUCTS',
+  orders: 'ORDERS',
+  delivery: 'DELIVERY',
+  customers: 'CUSTOMERS',
+  reports: 'REPORTS',
+  insights: 'REPORTS',
+  offers: 'OFFERS',
+};
+
+// permissions is only meaningfully consulted for staff — owners are always ALL_EDIT_GRID (see
+// StoreContext), so this filter is a no-op for them.
+function buildNavItems(businessType: BusinessType, slug: string, permissions: PermissionGrid): NavItem[] {
   const sections = NAV_SECTIONS[businessType] ?? NAV_SECTIONS.retail;
-  return sections.map(({ label, section, icon }) => ({
-    label,
-    href: dashboardPath(slug, section),
-    icon,
-  }));
+  return sections
+    .filter(({ section }) => {
+      if (!section) return true;
+      const permSection = SECTION_FOR_NAV[section];
+      return !permSection || permissions[permSection] !== 'NONE';
+    })
+    .map(({ label, section, icon }) => ({
+      label,
+      href: dashboardPath(slug, section),
+      icon,
+    }));
 }
 
 function bottomNavItems(businessType: BusinessType, slug: string): NavItem[] {
@@ -120,9 +144,9 @@ interface SidebarContentProps {
 function SidebarContent({ onClose, collapsed, onToggleCollapse }: SidebarContentProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { store, businessType, dashboardSlug, userRole } = useStore();
+  const { store, businessType, dashboardSlug, userRole, permissions } = useStore();
   const [loggingOut, setLoggingOut] = useState(false);
-  const navItems = buildNavItems(businessType, dashboardSlug);
+  const navItems = buildNavItems(businessType, dashboardSlug, permissions);
   const homeHref = dashboardPath(dashboardSlug);
 
   const isActive = (href: string) =>

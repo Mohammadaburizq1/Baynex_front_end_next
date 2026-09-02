@@ -16,6 +16,7 @@ import {
 } from 'recharts';
 
 import { Header } from '@/components/dashboard/Header';
+import { SectionAccessGate } from '@/components/dashboard/SectionAccessGate';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -189,6 +190,7 @@ export default function ReportsPage() {
   const totalCategoryRevenue = categoryRevenue.reduce((sum, c) => sum + c.revenue, 0);
 
   return (
+    <SectionAccessGate section="REPORTS" pageTitle="Reports">
     <div className="flex flex-col min-h-full font-jakarta">
       <Header title="Reports" subtitle="Sales performance and analytics" />
 
@@ -590,5 +592,6 @@ export default function ReportsPage() {
 
       </main>
     </div>
+    </SectionAccessGate>
   );
 }
