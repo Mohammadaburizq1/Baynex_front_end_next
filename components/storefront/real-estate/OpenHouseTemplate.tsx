@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import type { StorefrontData, PublicProduct } from '@/lib/types/store';
 import {
   Phone,
@@ -10,7 +11,10 @@ import {
   Bed,
   Bath,
   Building2,
+  CalendarCheck,
 } from 'lucide-react';
+import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
+import { getUpcomingSlots, bookAppointment, type ApiAppointmentSlot } from '@/lib/api/appointments';
 
 interface OpenHouseTemplateProps {
   data: StorefrontData;
@@ -39,10 +43,23 @@ function parseBaths(description: string): number | null {
 export default function OpenHouseTemplate({ data }: OpenHouseTemplateProps) {
   const { store, products } = data;
   const tc = data.templateContent;
+  const router = useRouter();
+  const pathname = usePathname();
+  const { user, isAuthenticated } = useCustomerAuth();
 
   const [activeCategory, setActiveCategory] = useState<string>('All');
   const [selectedProperty, setSelectedProperty] = useState<PublicProduct | null>(null);
   const [contactOpen, setContactOpen] = useState(false);
+
+  // ── Real booking (slots fetched when the modal opens) ─────────────────────
+  const [slots, setSlots] = useState<ApiAppointmentSlot[]>([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [selectedSlotId, setSelectedSlotId] = useState('');
+  const [bookName, setBookName] = useState('');
+  const [bookPhone, setBookPhone] = useState('');
+  const [booking, setBooking] = useState(false);
+  const [bookError, setBookError] = useState('');
+  const [booked, setBooked] = useState(false);
 
   const categories = ['All', ...Array.from(new Set(products.map((p) => p.category)))];
 
@@ -58,6 +75,46 @@ export default function OpenHouseTemplate({ data }: OpenHouseTemplateProps) {
   function handleContact(product: PublicProduct) {
     setSelectedProperty(product);
     setContactOpen(true);
+    setBooked(false);
+    setBookError('');
+    setSelectedSlotId('');
+    setBookName(user?.name ?? '');
+    setBookPhone(user?.phone ?? '');
+    setLoadingSlots(true);
+    getUpcomingSlots(store.slug)
+      .then(setSlots)
+      .catch(() => setSlots([]))
+      .finally(() => setLoadingSlots(false));
+  }
+
+  async function handleBookSlot() {
+    if (!isAuthenticated) {
+      router.push(`/customer/login?redirect=${encodeURIComponent(pathname)}`);
+      return;
+    }
+    if (!selectedSlotId) {
+      setBookError('Please select a time.');
+      return;
+    }
+    if (!bookName.trim() || !bookPhone.trim()) {
+      setBookError('Name and phone are required.');
+      return;
+    }
+    setBooking(true);
+    setBookError('');
+    try {
+      await bookAppointment(store.slug, {
+        slotId: selectedSlotId,
+        productId: selectedProperty ? String(selectedProperty.id) : undefined,
+        customerName: bookName.trim(),
+        customerPhone: bookPhone.trim(),
+        notes: selectedProperty ? `Viewing request for "${selectedProperty.name}"` : undefined,
+      });
+      setBooked(true);
+    } catch (e) {
+      setBookError(e instanceof Error ? e.message : 'Could not book this slot. Please try again.');
+    }
+    setBooking(false);
   }
 
   function handleWhatsApp() {
@@ -267,6 +324,65 @@ export default function OpenHouseTemplate({ data }: OpenHouseTemplateProps) {
             <p className="font-jakarta text-sm text-[#718096] mb-5">
               {selectedProperty.name}
             </p>
+
+            {booked ? (
+              <div className="text-center py-2">
+                <CalendarCheck size={32} className="mx-auto mb-2" color="#16A34A" />
+                <p className="font-jakarta font-bold text-sm text-[#0A192F]">Viewing requested!</p>
+                <p className="font-jakarta text-xs text-[#718096] mt-1">We&apos;ll confirm your slot shortly.</p>
+              </div>
+            ) : (
+              <div className="space-y-3 mb-4">
+                {bookError && (
+                  <p className="font-jakarta text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{bookError}</p>
+                )}
+                {loadingSlots ? (
+                  <p className="font-jakarta text-xs text-[#718096]">Loading available times…</p>
+                ) : slots.length === 0 ? (
+                  <p className="font-jakarta text-xs text-[#718096]">No viewing times published yet — reach out on WhatsApp instead.</p>
+                ) : (
+                  <>
+                    <select
+                      value={selectedSlotId}
+                      onChange={(e) => setSelectedSlotId(e.target.value)}
+                      className="w-full h-11 px-3 rounded-xl font-jakarta text-sm text-[#1A202C]"
+                      style={{ border: '1px solid #E2E8F0' }}
+                      aria-label="Select a viewing time"
+                    >
+                      <option value="">Select a time…</option>
+                      {slots.map((slot) => (
+                        <option key={slot.id} value={slot.id}>
+                          {new Date(slot.startsAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      value={bookName}
+                      onChange={(e) => setBookName(e.target.value)}
+                      placeholder="Your name"
+                      className="w-full h-11 px-3 rounded-xl font-jakarta text-sm text-[#1A202C]"
+                      style={{ border: '1px solid #E2E8F0' }}
+                    />
+                    <input
+                      value={bookPhone}
+                      onChange={(e) => setBookPhone(e.target.value)}
+                      placeholder="Phone"
+                      className="w-full h-11 px-3 rounded-xl font-jakarta text-sm text-[#1A202C]"
+                      style={{ border: '1px solid #E2E8F0' }}
+                    />
+                    <button
+                      onClick={handleBookSlot}
+                      disabled={booking}
+                      className="w-full h-12 rounded-xl text-white font-jakarta font-bold text-sm flex items-center justify-center gap-2 cursor-pointer hover:opacity-90 transition disabled:opacity-60"
+                      style={{ background: '#0A192F' }}
+                    >
+                      <CalendarCheck size={18} />
+                      {booking ? 'Booking…' : isAuthenticated ? 'Book This Viewing' : 'Sign In to Book'}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
 
             <button
               onClick={handleWhatsApp}

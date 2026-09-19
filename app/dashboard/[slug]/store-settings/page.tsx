@@ -41,6 +41,7 @@ const PERMISSION_SECTIONS: { section: DashboardSection; label: string }[] = [
   { section: 'CUSTOMERS', label: 'Customers' },
   { section: 'REPORTS', label: 'Reports & Insights' },
   { section: 'OFFERS', label: 'Offers' },
+  { section: 'APPOINTMENTS', label: 'Appointments' },
 ];
 
 const TIMEZONE_OPTIONS = [

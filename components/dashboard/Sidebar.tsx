@@ -51,7 +51,7 @@ const NAV_SECTIONS: Record<BusinessType, NavSection[]> = {
   real_estate: [
     { label: 'Home', icon: LayoutDashboard },
     { label: 'Listings', section: 'products', icon: Home },
-    { label: 'Appointments', section: 'delivery', icon: CalendarDays },
+    { label: 'Appointments', section: 'appointments', icon: CalendarDays },
     { label: 'Customers', section: 'customers', icon: Users },
     { label: 'Reports', section: 'reports', icon: BarChart2 },
     { label: 'Insights', section: 'insights', icon: Lightbulb },
@@ -60,7 +60,7 @@ const NAV_SECTIONS: Record<BusinessType, NavSection[]> = {
   services: [
     { label: 'Home', icon: LayoutDashboard },
     { label: 'Services', section: 'products', icon: ShoppingBag },
-    { label: 'Appointments', section: 'delivery', icon: CalendarDays },
+    { label: 'Appointments', section: 'appointments', icon: CalendarDays },
     { label: 'Orders', section: 'orders', icon: ClipboardList },
     { label: 'Customers', section: 'customers', icon: Users },
     { label: 'Reports', section: 'reports', icon: BarChart2 },
@@ -99,6 +99,7 @@ const SECTION_FOR_NAV: Record<string, DashboardSection> = {
   reports: 'REPORTS',
   insights: 'REPORTS',
   offers: 'OFFERS',
+  appointments: 'APPOINTMENTS',
 };
 
 // permissions is only meaningfully consulted for staff — owners are always ALL_EDIT_GRID (see

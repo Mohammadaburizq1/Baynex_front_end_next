@@ -3,7 +3,7 @@ import { apiRequest } from './client';
 // Mirrors com.byonix.shoplink.domain.enums.DashboardSection / PermissionLevel. Inventory and
 // Insights aren't separate backend sections — they read the same PRODUCTS/REPORTS data, see
 // Sidebar.tsx's SECTION_FOR_NAV map.
-export type DashboardSection = 'PRODUCTS' | 'ORDERS' | 'DELIVERY' | 'CUSTOMERS' | 'REPORTS' | 'OFFERS';
+export type DashboardSection = 'PRODUCTS' | 'ORDERS' | 'DELIVERY' | 'CUSTOMERS' | 'REPORTS' | 'OFFERS' | 'APPOINTMENTS';
 export type PermissionLevel = 'NONE' | 'VIEW' | 'EDIT';
 
 export interface PermissionGrant {
@@ -44,4 +44,5 @@ export async function getMyPermissions(): Promise<PermissionGrid> {
 
 export const ALL_EDIT_GRID: PermissionGrid = {
   PRODUCTS: 'EDIT', ORDERS: 'EDIT', DELIVERY: 'EDIT', CUSTOMERS: 'EDIT', REPORTS: 'EDIT', OFFERS: 'EDIT',
+  APPOINTMENTS: 'EDIT',
 };

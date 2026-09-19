@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { Cormorant_Garamond } from 'next/font/google';
 import type { StorefrontData, PublicProduct } from '@/lib/types/store';
 import {
@@ -10,7 +11,10 @@ import {
   ChevronDown,
   X,
   ShoppingBag,
+  CalendarCheck,
 } from 'lucide-react';
+import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
+import { getUpcomingSlots, bookAppointment, type ApiAppointmentSlot } from '@/lib/api/appointments';
 
 // ─── Font ─────────────────────────────────────────────────────────────────────
 
@@ -56,6 +60,7 @@ function BookingModal({
   currencySuffix,
   whatsappNumber,
   shopName,
+  storeSlug,
   onClose,
 }: {
   open: boolean;
@@ -64,8 +69,39 @@ function BookingModal({
   currencySuffix: string;
   whatsappNumber: string | null;
   shopName: string;
+  storeSlug: string;
   onClose: () => void;
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const { user, isAuthenticated } = useCustomerAuth();
+
+  const [slots, setSlots] = useState<ApiAppointmentSlot[]>([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [selectedSlotId, setSelectedSlotId] = useState('');
+  const [bookName, setBookName] = useState('');
+  const [bookPhone, setBookPhone] = useState('');
+  const [booking, setBooking] = useState(false);
+  const [bookError, setBookError] = useState('');
+  const [booked, setBooked] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setBooked(false);
+    setBookError('');
+    setSelectedSlotId('');
+    setBookName(user?.name ?? '');
+    setBookPhone(user?.phone ?? '');
+    setLoadingSlots(true);
+    let cancelled = false;
+    getUpcomingSlots(storeSlug)
+      .then((s) => { if (!cancelled) setSlots(s); })
+      .catch(() => { if (!cancelled) setSlots([]); })
+      .finally(() => { if (!cancelled) setLoadingSlots(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, storeSlug]);
+
   if (!open) return null;
 
   const selected = products.filter((p) => bookingList.has(p.id));
@@ -88,6 +124,39 @@ function BookingModal({
       `Total: ${total.toLocaleString()} ${currencySuffix}`,
     ].join('\n');
     openWhatsApp(whatsappNumber, message);
+  }
+
+  async function handleBookSlot() {
+    if (!isAuthenticated) {
+      router.push(`/customer/login?redirect=${encodeURIComponent(pathname)}`);
+      return;
+    }
+    if (!selectedSlotId) {
+      setBookError('Please select a time.');
+      return;
+    }
+    if (!bookName.trim() || !bookPhone.trim()) {
+      setBookError('Name and phone are required.');
+      return;
+    }
+    setBooking(true);
+    setBookError('');
+    try {
+      await bookAppointment(storeSlug, {
+        slotId: selectedSlotId,
+        // Multiple services can be selected here — a single Appointment links to at most one
+        // product, so the chosen list goes in notes instead of forcing an arbitrary pick.
+        customerName: bookName.trim(),
+        customerPhone: bookPhone.trim(),
+        notes: selected.length > 0
+          ? `Requested: ${selected.map((p) => p.name).join(', ')} (${total.toLocaleString()} ${currencySuffix})`
+          : undefined,
+      });
+      setBooked(true);
+    } catch (e) {
+      setBookError(e instanceof Error ? e.message : 'Could not book this slot. Please try again.');
+    }
+    setBooking(false);
   }
 
   return (
@@ -165,23 +234,76 @@ function BookingModal({
           </span>
         </div>
 
-        {/* Confirm */}
-        {whatsappNumber ? (
+        {/* Real booking */}
+        {booked ? (
+          <div className="text-center py-3 mt-4">
+            <CalendarCheck size={28} className="mx-auto mb-2" style={{ color: C.accentDark }} />
+            <p className={`${cormorant.className} font-semibold text-base`} style={{ color: C.ink }}>Appointment requested!</p>
+            <p className="font-jakarta text-xs mt-1" style={{ color: C.muted }}>We&apos;ll confirm your slot shortly.</p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2 mt-4">
+            {bookError && (
+              <p className="font-jakarta text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{bookError}</p>
+            )}
+            {loadingSlots ? (
+              <p className="font-jakarta text-xs" style={{ color: C.muted }}>Loading available times…</p>
+            ) : slots.length === 0 ? (
+              <p className="font-jakarta text-xs" style={{ color: C.muted }}>No appointment times published yet — reach out on WhatsApp instead.</p>
+            ) : (
+              <>
+                <select
+                  value={selectedSlotId}
+                  onChange={(e) => setSelectedSlotId(e.target.value)}
+                  className="w-full h-11 px-3 rounded-xl font-jakarta text-sm"
+                  style={{ border: `1px solid ${C.lavender}`, color: C.ink }}
+                  aria-label="Select an appointment time"
+                >
+                  <option value="">Select a time…</option>
+                  {slots.map((slot) => (
+                    <option key={slot.id} value={slot.id}>
+                      {new Date(slot.startsAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={bookName}
+                  onChange={(e) => setBookName(e.target.value)}
+                  placeholder="Your name"
+                  className="w-full h-11 px-3 rounded-xl font-jakarta text-sm"
+                  style={{ border: `1px solid ${C.lavender}`, color: C.ink }}
+                />
+                <input
+                  value={bookPhone}
+                  onChange={(e) => setBookPhone(e.target.value)}
+                  placeholder="Phone"
+                  className="w-full h-11 px-3 rounded-xl font-jakarta text-sm"
+                  style={{ border: `1px solid ${C.lavender}`, color: C.ink }}
+                />
+                <button
+                  onClick={handleBookSlot}
+                  disabled={booking}
+                  className="w-full h-12 rounded-xl font-jakarta font-bold text-sm flex items-center justify-center gap-2 text-white cursor-pointer hover:opacity-90 transition disabled:opacity-60"
+                  style={{ background: C.accentDark }}
+                >
+                  <CalendarCheck size={18} aria-hidden="true" />
+                  {booking ? 'Booking…' : isAuthenticated ? 'Book This Appointment' : 'Sign In to Book'}
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Confirm via WhatsApp — kept as a fallback */}
+        {whatsappNumber && (
           <button
             onClick={handleConfirm}
-            className="w-full h-12 rounded-xl font-jakarta font-bold text-sm mt-4 flex items-center justify-center gap-2 text-white cursor-pointer hover:opacity-90 transition"
+            className="w-full h-12 rounded-xl font-jakarta font-bold text-sm mt-2 flex items-center justify-center gap-2 text-white cursor-pointer hover:opacity-90 transition"
             style={{ background: '#25D366' }}
           >
             <MessageCircle size={18} aria-hidden="true" />
             Confirm via WhatsApp
           </button>
-        ) : (
-          <p
-            className="font-jakarta text-sm mt-4 text-center"
-            style={{ color: C.muted }}
-          >
-            Contact us to finalize your booking.
-          </p>
         )}
       </div>
     </div>
@@ -511,6 +633,7 @@ export default function SerenitySpaTemplate({ data }: { data: StorefrontData }) 
         currencySuffix={store.currencySuffix}
         whatsappNumber={store.whatsappNumber}
         shopName={store.shopName}
+        storeSlug={store.slug}
         onClose={() => setModalOpen(false)}
       />
     </div>

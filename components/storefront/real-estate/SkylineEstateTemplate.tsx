@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { Cinzel } from 'next/font/google';
 import { Cormorant_Garamond } from 'next/font/google';
 import type { StorefrontData, PublicProduct } from '@/lib/types/store';
@@ -11,7 +12,10 @@ import {
   Bed,
   Bath,
   Maximize2,
+  CalendarCheck,
 } from 'lucide-react';
+import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
+import { getUpcomingSlots, bookAppointment, type ApiAppointmentSlot } from '@/lib/api/appointments';
 
 const cinzel = Cinzel({
   subsets: ['latin'],
@@ -85,9 +89,23 @@ export default function SkylineEstateTemplate({ data }: SkylineEstateTemplatePro
   const scrollRef = useRef<HTMLDivElement>(null);
   const sectionRefs = useRef<(HTMLElement | null)[]>([]);
 
+  const router = useRouter();
+  const pathname = usePathname();
+  const { user, isAuthenticated } = useCustomerAuth();
+
   const [activeIdx, setActiveIdx] = useState(0);
   const [selectedProperty, setSelectedProperty] = useState<PublicProduct | null>(null);
   const [contactOpen, setContactOpen] = useState(false);
+
+  // ── Real booking (slots fetched when the modal opens) ─────────────────────
+  const [slots, setSlots] = useState<ApiAppointmentSlot[]>([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [selectedSlotId, setSelectedSlotId] = useState('');
+  const [bookName, setBookName] = useState('');
+  const [bookPhone, setBookPhone] = useState('');
+  const [booking, setBooking] = useState(false);
+  const [bookError, setBookError] = useState('');
+  const [booked, setBooked] = useState(false);
 
   // Track active section on scroll
   useEffect(() => {
@@ -130,6 +148,46 @@ export default function SkylineEstateTemplate({ data }: SkylineEstateTemplatePro
   function handleRequestViewing(product: PublicProduct) {
     setSelectedProperty(product);
     setContactOpen(true);
+    setBooked(false);
+    setBookError('');
+    setSelectedSlotId('');
+    setBookName(user?.name ?? '');
+    setBookPhone(user?.phone ?? '');
+    setLoadingSlots(true);
+    getUpcomingSlots(store.slug)
+      .then(setSlots)
+      .catch(() => setSlots([]))
+      .finally(() => setLoadingSlots(false));
+  }
+
+  async function handleBookSlot() {
+    if (!isAuthenticated) {
+      router.push(`/customer/login?redirect=${encodeURIComponent(pathname)}`);
+      return;
+    }
+    if (!selectedSlotId) {
+      setBookError('Please select a time.');
+      return;
+    }
+    if (!bookName.trim() || !bookPhone.trim()) {
+      setBookError('Name and phone are required.');
+      return;
+    }
+    setBooking(true);
+    setBookError('');
+    try {
+      await bookAppointment(store.slug, {
+        slotId: selectedSlotId,
+        productId: selectedProperty ? String(selectedProperty.id) : undefined,
+        customerName: bookName.trim(),
+        customerPhone: bookPhone.trim(),
+        notes: selectedProperty ? `Viewing request for "${selectedProperty.name}"` : undefined,
+      });
+      setBooked(true);
+    } catch (e) {
+      setBookError(e instanceof Error ? e.message : 'Could not book this slot. Please try again.');
+    }
+    setBooking(false);
   }
 
   function handleWhatsApp() {
@@ -375,6 +433,65 @@ export default function SkylineEstateTemplate({ data }: SkylineEstateTemplatePro
             >
               {selectedProperty.name}
             </p>
+
+            {booked ? (
+              <div className="text-center py-2">
+                <CalendarCheck size={32} className="mx-auto mb-2" style={{ color: '#C5A880' }} />
+                <p className={`${cinzel.className} font-semibold text-sm`} style={{ color: '#F5F0E8' }}>Viewing requested!</p>
+                <p className="font-jakarta text-xs mt-1" style={{ color: 'rgba(245,240,232,0.6)' }}>We&apos;ll confirm your slot shortly.</p>
+              </div>
+            ) : (
+              <div className="space-y-3 mb-4">
+                {bookError && (
+                  <p className="font-jakarta text-xs text-red-300 bg-red-900/30 rounded-lg px-3 py-2">{bookError}</p>
+                )}
+                {loadingSlots ? (
+                  <p className="font-jakarta text-xs" style={{ color: 'rgba(245,240,232,0.6)' }}>Loading available times…</p>
+                ) : slots.length === 0 ? (
+                  <p className="font-jakarta text-xs" style={{ color: 'rgba(245,240,232,0.6)' }}>No viewing times published yet — reach out on WhatsApp instead.</p>
+                ) : (
+                  <>
+                    <select
+                      value={selectedSlotId}
+                      onChange={(e) => setSelectedSlotId(e.target.value)}
+                      className="w-full h-11 px-3 rounded-xl font-jakarta text-sm"
+                      style={{ background: '#0B0C10', color: '#F5F0E8', border: '1px solid rgba(197,168,128,0.3)' }}
+                      aria-label="Select a viewing time"
+                    >
+                      <option value="">Select a time…</option>
+                      {slots.map((slot) => (
+                        <option key={slot.id} value={slot.id}>
+                          {new Date(slot.startsAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      value={bookName}
+                      onChange={(e) => setBookName(e.target.value)}
+                      placeholder="Your name"
+                      className="w-full h-11 px-3 rounded-xl font-jakarta text-sm"
+                      style={{ background: '#0B0C10', color: '#F5F0E8', border: '1px solid rgba(197,168,128,0.3)' }}
+                    />
+                    <input
+                      value={bookPhone}
+                      onChange={(e) => setBookPhone(e.target.value)}
+                      placeholder="Phone"
+                      className="w-full h-11 px-3 rounded-xl font-jakarta text-sm"
+                      style={{ background: '#0B0C10', color: '#F5F0E8', border: '1px solid rgba(197,168,128,0.3)' }}
+                    />
+                    <button
+                      onClick={handleBookSlot}
+                      disabled={booking}
+                      className="w-full h-12 rounded-xl font-jakarta font-bold text-sm flex items-center justify-center gap-2 cursor-pointer hover:opacity-90 transition disabled:opacity-60"
+                      style={{ background: '#C5A880', color: '#0B0C10' }}
+                    >
+                      <CalendarCheck size={18} />
+                      {booking ? 'Booking…' : isAuthenticated ? 'Book This Viewing' : 'Sign In to Book'}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
 
             <button
               onClick={handleWhatsApp}
