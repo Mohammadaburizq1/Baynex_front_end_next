@@ -25,7 +25,7 @@ export interface Store {
   locale?: string;
   status: StoreStatus;
   // Whether the store is accepting orders right now — separate from `status` (published/draft).
-  // Local-only preference; the backend has no concept of this yet.
+  // Persisted via PUT /api/dashboard/stores/{id}/accepting-orders (M1-04).
   acceptingOrders?: boolean;
   theme: string;
   templateContent?: ClothingTemplateContent;

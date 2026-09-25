@@ -75,7 +75,7 @@ export async function customerRegister(data: {
   phone?: string;
 }): Promise<CustomerUser> {
   const res = await fetch(`${API_BASE}/api/public/auth/register`, {
-    method: 'POST',
+    method: 'POST', credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
@@ -92,7 +92,7 @@ export async function customerRegister(data: {
 
 export async function customerLogin(email: string, password: string): Promise<CustomerUser> {
   const res = await fetch(`${API_BASE}/api/public/auth/login`, {
-    method: 'POST',
+    method: 'POST', credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
   });
@@ -135,7 +135,7 @@ export async function customerOrder(id: string): Promise<CustomerOrder> {
 
 export async function customerLogout(): Promise<void> {
   try {
-    await customerApiRequest('/api/public/auth/logout', { method: 'POST' });
+    await customerApiRequest('/api/public/auth/logout', { method: 'POST', body: JSON.stringify({ refreshToken: customerTokenStore.getRefresh() }) });
   } catch { /* ignore — clear tokens regardless */ }
   customerTokenStore.clear();
 }
@@ -147,7 +147,7 @@ export function isCustomerAuthenticated(): boolean {
 /** Always resolves with a generic message — backend never reveals whether the email exists. */
 export async function customerForgotPassword(email: string): Promise<string> {
   const res = await fetch(`${API_BASE}/api/public/auth/forgot-password`, {
-    method: 'POST',
+    method: 'POST', credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email }),
   });
@@ -162,7 +162,7 @@ export async function customerForgotPassword(email: string): Promise<string> {
 
 export async function customerResetPassword(token: string, newPassword: string): Promise<string> {
   const res = await fetch(`${API_BASE}/api/public/auth/reset-password`, {
-    method: 'POST',
+    method: 'POST', credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token, newPassword }),
   });

@@ -55,13 +55,8 @@ const SECTIONS: SectionDef[] = [
       { key: 'heroBadgeSubtitle', label: 'Badge subtitle', placeholder: 'Spring 2025' },
     ],
   },
-  {
-    title: 'Opening hours',
-    show: ['restaurant', 'coffee', 'street-food', 'retail', 'real-estate', 'services', 'medical'],
-    fields: [
-      { key: 'openingHours', label: 'Hours text', placeholder: 'Mon–Sun 8:00 AM – 9:00 PM' },
-    ],
-  },
+  // Opening hours are managed in Store Settings → Business Hours (M1-03).
+  // Do not expose a free-text "Hours text" field here — it no longer affects live storefronts.
   {
     title: 'Featured card',
     show: ['restaurant'],

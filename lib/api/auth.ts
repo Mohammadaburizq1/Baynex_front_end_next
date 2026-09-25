@@ -47,7 +47,7 @@ export async function login(identifier: string, password: string): Promise<AuthU
   const res = await fetch(
     `${API_BASE}/api/auth/${isPhone ? 'login-phone' : 'login'}`,
     {
-      method: 'POST',
+      method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(isPhone ? { phone: id, password } : { email: id, password }),
     },
@@ -75,7 +75,7 @@ export async function registerByPhone(data: {
   password: string;
 }): Promise<AuthUser> {
   const res = await fetch(`${API_BASE}/api/auth/register-phone`, {
-    method: 'POST',
+    method: 'POST', credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
@@ -97,7 +97,7 @@ export async function registerByPhone(data: {
 /** Verifies the signup OTP sent to a newly-registered phone number. */
 export async function verifyPhone(phone: string, code: string): Promise<string> {
   const res = await fetch(`${API_BASE}/api/auth/verify-phone`, {
-    method: 'POST',
+    method: 'POST', credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone, code }),
   });
@@ -113,7 +113,7 @@ export async function verifyPhone(phone: string, code: string): Promise<string> 
 /** Resends the signup verification OTP. Always resolves with a generic message. */
 export async function resendPhoneVerification(phone: string): Promise<string> {
   const res = await fetch(`${API_BASE}/api/auth/verify-phone/resend`, {
-    method: 'POST',
+    method: 'POST', credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone }),
   });
@@ -129,7 +129,7 @@ export async function resendPhoneVerification(phone: string): Promise<string> {
 /** Requests an OTP for phone-based password recovery. Always resolves with a generic message. */
 export async function forgotPasswordByPhone(phone: string): Promise<string> {
   const res = await fetch(`${API_BASE}/api/auth/forgot-password-phone`, {
-    method: 'POST',
+    method: 'POST', credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone }),
   });
@@ -145,7 +145,7 @@ export async function forgotPasswordByPhone(phone: string): Promise<string> {
 /** Completes phone-based password recovery with the OTP and a new password. */
 export async function resetPasswordByPhone(phone: string, code: string, newPassword: string): Promise<string> {
   const res = await fetch(`${API_BASE}/api/auth/reset-password-phone`, {
-    method: 'POST',
+    method: 'POST', credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone, code, newPassword }),
   });
@@ -161,7 +161,7 @@ export async function resetPasswordByPhone(phone: string, code: string, newPassw
 /** Always resolves with a generic message — backend never reveals whether the email exists. */
 export async function forgotPassword(email: string): Promise<string> {
   const res = await fetch(`${API_BASE}/api/auth/forgot-password`, {
-    method: 'POST',
+    method: 'POST', credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email }),
   });
@@ -176,7 +176,7 @@ export async function forgotPassword(email: string): Promise<string> {
 
 export async function resetPassword(token: string, newPassword: string): Promise<string> {
   const res = await fetch(`${API_BASE}/api/auth/reset-password`, {
-    method: 'POST',
+    method: 'POST', credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token, newPassword }),
   });
@@ -191,7 +191,7 @@ export async function resetPassword(token: string, newPassword: string): Promise
 
 export async function logout(): Promise<void> {
   try {
-    await apiRequest('/api/auth/logout', { method: 'POST' });
+    await apiRequest('/api/auth/logout', { method: 'POST', body: JSON.stringify({ refreshToken: tokenStore.getRefresh() }) });
   } catch { /* ignore — clear tokens regardless */ }
   tokenStore.clear();
 }

@@ -194,7 +194,7 @@ function ForgotPasswordForm() {
                       Check your email
                     </h1>
                     <p className="mt-1.5 text-sm text-center leading-[1.45]" style={{ color: '#475569' }}>
-                      If an account exists for <span className="font-semibold">{email.trim()}</span>, we&apos;ve sent a link to reset your password.
+                      If an account exists for <span className="font-semibold">{email.trim()}</span>, check your inbox for password reset instructions.
                     </p>
                   </div>
                   <a

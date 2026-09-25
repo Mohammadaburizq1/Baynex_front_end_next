@@ -217,7 +217,9 @@ export default function GreenLeafTemplate({ data }: { data: StorefrontData }) {
   const heroImageSrc =
     tc?.heroImageUrl?.trim() || products.find((p) => p.imageUrl)?.imageUrl || HERO_FALLBACK;
   const tagline = tc?.heroDescription || store.description?.trim() || 'Fresh, seasonal, and mindfully sourced';
-  const openingHours = tc?.openingHours || store.openingHours?.trim() || 'Mon–Sun 8:00 AM – 9:00 PM';
+  const openingHours = data.demo
+    ? (tc?.openingHours || store.openingHours?.trim() || 'Mon–Sun 8:00 AM – 9:00 PM')
+    : (store.openingHours?.trim() || tc?.openingHours || '');
 
   return (
     <div

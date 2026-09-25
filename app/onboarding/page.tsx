@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   Search, Check, ChevronUp, ChevronDown, Play,
   MessageCircle, Lock, Eye, EyeOff,
-  MapPin, Truck, Package, Clock, CalendarDays, Loader2,
+  MapPin, Truck, Package, CalendarDays, Loader2,
   CheckCircle2, MousePointerClick,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -2033,8 +2033,6 @@ function BusinessDetailsStep({
 function ContactStep({
   businessType, phone, onPhoneChange, address, onAddressChange,
   delivery, onDeliveryChange, pickup, onPickupChange,
-  openingHours, onOpeningHoursChange, booking, onBookingChange,
-  inquiryMode, onInquiryModeChange,
   password, onPasswordChange, confirmPassword, onConfirmPasswordChange,
   showPassword, onToggleShowPassword,
 }: {
@@ -2043,9 +2041,6 @@ function ContactStep({
   address: string; onAddressChange: (v: string) => void;
   delivery: boolean; onDeliveryChange: (v: boolean) => void;
   pickup: boolean; onPickupChange: (v: boolean) => void;
-  openingHours: string; onOpeningHoursChange: (v: string) => void;
-  booking: boolean; onBookingChange: (v: boolean) => void;
-  inquiryMode: boolean; onInquiryModeChange: (v: boolean) => void;
   password: string; onPasswordChange: (v: string) => void;
   confirmPassword: string; onConfirmPasswordChange: (v: string) => void;
   showPassword: boolean; onToggleShowPassword: () => void;
@@ -2121,40 +2116,16 @@ function ContactStep({
         )}
 
         {businessType === 'restaurant' && (
-          <>
-            <DarkToggle
-              checked={pickup}
-              onChange={onPickupChange}
-              label="Self-Pickup Available"
-              subtitle="Customers can pick up their orders"
-            />
-            <DarkInput
-              label="Opening Hours"
-              value={openingHours}
-              onChange={onOpeningHoursChange}
-              placeholder="e.g. 9am – 10pm, daily"
-              prefix={Clock}
-            />
-          </>
-        )}
-
-        {businessType === 'services' && (
           <DarkToggle
-            checked={booking}
-            onChange={onBookingChange}
-            label="Online Booking"
-            subtitle="Let customers book appointments directly"
+            checked={pickup}
+            onChange={onPickupChange}
+            label="Self-Pickup Available"
+            subtitle="Customers can pick up their orders"
           />
         )}
 
-        {businessType === 'catalog' && (
-          <DarkToggle
-            checked={inquiryMode}
-            onChange={onInquiryModeChange}
-            label="WhatsApp Inquiry Mode"
-            subtitle="Customers contact you via WhatsApp instead of checkout"
-          />
-        )}
+        {/* Opening hours, booking, and inquiry mode are configured after setup in Store Settings /
+            Delivery — free-text placeholders here would mislead merchants (M1-03 / M1-04 / M1-05). */}
       </div>
     </div>
   );
@@ -2224,9 +2195,6 @@ export default function OnboardingPage() {
   const [address, setAddress] = useState('');
   const [delivery, setDelivery] = useState(false);
   const [pickup, setPickup] = useState(false);
-  const [openingHours, setOpeningHours] = useState('');
-  const [booking, setBooking] = useState(false);
-  const [inquiryMode, setInquiryMode] = useState(false);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -2740,9 +2708,6 @@ export default function OnboardingPage() {
                   address={address} onAddressChange={setAddress}
                   delivery={delivery} onDeliveryChange={setDelivery}
                   pickup={pickup} onPickupChange={setPickup}
-                  openingHours={openingHours} onOpeningHoursChange={setOpeningHours}
-                  booking={booking} onBookingChange={setBooking}
-                  inquiryMode={inquiryMode} onInquiryModeChange={setInquiryMode}
                   password={password} onPasswordChange={setPassword}
                   confirmPassword={confirmPassword} onConfirmPasswordChange={setConfirmPassword}
                   showPassword={showPassword} onToggleShowPassword={() => setShowPassword(v => !v)}

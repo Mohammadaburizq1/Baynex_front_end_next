@@ -43,9 +43,9 @@ export const adminTokenStore = {
     typeof window !== 'undefined' ? localStorage.getItem(ADMIN_ACCESS_KEY) : null,
   getRefresh: (): string | null =>
     typeof window !== 'undefined' ? localStorage.getItem(ADMIN_REFRESH_KEY) : null,
-  set: (access: string, refresh: string) => {
+  set: (access: string, refresh?: string) => {
     localStorage.setItem(ADMIN_ACCESS_KEY, access);
-    localStorage.setItem(ADMIN_REFRESH_KEY, refresh);
+    if (refresh) localStorage.setItem(ADMIN_REFRESH_KEY, refresh); else localStorage.removeItem(ADMIN_REFRESH_KEY);
   },
   clear: () => {
     localStorage.removeItem(ADMIN_ACCESS_KEY);
@@ -69,7 +69,7 @@ export type AdminLoginResult =
 /** Step 1. SUPER_ADMIN gets mfa-required; other admin roles get tokens directly. */
 export async function adminLogin(email: string, password: string): Promise<AdminLoginResult> {
   const res = await fetch(`${API_BASE}/api/admin/auth/login`, {
-    method: 'POST',
+    method: 'POST', credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
   });
@@ -92,7 +92,7 @@ export async function adminLogin(email: string, password: string): Promise<Admin
 /** Step 2, only when adminLogin() returned mfa-required. */
 export async function adminVerifyMfa(mfaChallengeToken: string, mfaCode: string): Promise<AdminUser> {
   const res = await fetch(`${API_BASE}/api/admin/auth/mfa/verify`, {
-    method: 'POST',
+    method: 'POST', credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ mfaChallengeToken, mfaCode }),
   });
@@ -110,7 +110,7 @@ export async function adminVerifyMfa(mfaChallengeToken: string, mfaCode: string)
 /** Always resolves with a generic message — backend never reveals whether the email exists. */
 export async function adminForgotPassword(email: string): Promise<string> {
   const res = await fetch(`${API_BASE}/api/admin/auth/forgot-password`, {
-    method: 'POST',
+    method: 'POST', credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email }),
   });
@@ -125,7 +125,7 @@ export async function adminForgotPassword(email: string): Promise<string> {
 
 export async function adminResetPassword(token: string, newPassword: string): Promise<string> {
   const res = await fetch(`${API_BASE}/api/admin/auth/reset-password`, {
-    method: 'POST',
+    method: 'POST', credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token, newPassword }),
   });

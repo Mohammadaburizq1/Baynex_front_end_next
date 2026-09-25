@@ -229,7 +229,7 @@ function StoreSettingsContent() {
     try {
       const { inviteStaff } = await import('@/lib/api/staff');
       const result = await inviteStaff(store.id, inviteEmail.trim(), inviteName.trim() || undefined);
-      success(`Invite sent to ${result.email}.`);
+      success(`Invitation created for ${result.email}.`);
       setInviteModalOpen(false);
       setInviteEmail('');
       setInviteName('');
@@ -797,53 +797,23 @@ function StoreSettingsContent() {
           </div>
         </Modal>
 
-        {/* ── Section 4: Storefront customization (clothing) ───────── */}
-        {(store.businessType === 'clothing' || store.theme?.startsWith('clothing-')) && (
-          <Card>
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 bg-violet-100 rounded-lg">
-                  <Palette size={16} className="text-violet-600" />
-                </div>
-                <CardTitle>Storefront appearance</CardTitle>
-              </div>
-              <CardDescription>
-                Edit hero text, images, testimonials, newsletter copy, and every section on your clothing template.
-              </CardDescription>
-            </CardHeader>
-            <a href={dashboardPath(dashboardSlug, 'customize-storefront')}>
-              <Button className="w-full">Customize template content</Button>
-            </a>
-          </Card>
-        )}
-
-        {/* ── Section 5: Appearance (other types) ───────────────────── */}
-        {store.businessType !== 'clothing' && !store.theme?.startsWith('clothing-') && (
-        <Card className="opacity-60 pointer-events-none select-none">
+        {/* ── Section 4: Storefront customization ───────────────────── */}
+        <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
-              <div className="p-1.5 bg-slate-100 rounded-lg">
-                <Palette size={16} className="text-slate-400" />
+              <div className="p-1.5 bg-violet-100 rounded-lg">
+                <Palette size={16} className="text-violet-600" />
               </div>
-              <CardTitle className="text-slate-400">Appearance</CardTitle>
+              <CardTitle>Storefront appearance</CardTitle>
             </div>
-            <Badge variant="default">Coming Soon</Badge>
+            <CardDescription>
+              Edit hero text, images, section copy, and other template content. Changes are saved as a draft until you publish.
+            </CardDescription>
           </CardHeader>
-          <CardDescription>
-            Theme customization, brand colours, and logo uploads are coming soon. Stay tuned for updates.
-          </CardDescription>
-          <div className="mt-4 grid grid-cols-3 gap-3">
-            {['Default', 'Modern', 'Classic'].map(theme => (
-              <div
-                key={theme}
-                className="h-16 rounded-lg bg-gradient-to-br from-slate-100 to-slate-200 flex items-end p-2"
-              >
-                <span className="text-xs text-slate-400 font-medium">{theme}</span>
-              </div>
-            ))}
-          </div>
+          <Link href={dashboardPath(dashboardSlug, 'customize-storefront')}>
+            <Button className="w-full">Customize storefront</Button>
+          </Link>
         </Card>
-        )}
 
         </div>
       </main>

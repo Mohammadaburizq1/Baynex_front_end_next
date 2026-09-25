@@ -369,7 +369,7 @@ export default function DeliveryPage() {
                   value={freeThreshold}
                   onChange={e => setFreeThreshold(e.target.value)}
                   hint="0 = disabled"
-                  prefix={<span className="text-xs font-medium">RM</span>}
+                  prefix={<span className="text-xs font-medium">{store.currency || 'JOD'}</span>}
                 />
                 <Input
                   label="Default Estimated Time"

@@ -70,8 +70,12 @@ export default function RestaurantDefaultPage({ data }: RestaurantDefaultPagePro
   const tc = data.templateContent;
 
   // — Content derivation —
+  // Hours: live stores use M1-03 business-hours label on store.openingHours.
+  // Template free-text openingHours is for demo/template showcase only (stripped for live by StorefrontRenderer).
   const name = (store.shopName ?? '').trim() || 'Foodie Restaurant';
-  const openingHours = tc?.openingHours || (store.openingHours ?? '').trim() || 'Open: 11:00am – 11:00pm';
+  const openingHours = data.demo
+    ? (tc?.openingHours || (store.openingHours ?? '').trim() || 'Open: 11:00am – 11:00pm')
+    : ((store.openingHours ?? '').trim() || (tc?.openingHours ?? '').trim());
   const subtitle =
     tc?.heroDescription ||
     (store.description ?? '').trim() ||

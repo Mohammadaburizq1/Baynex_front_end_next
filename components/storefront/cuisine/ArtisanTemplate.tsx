@@ -154,7 +154,9 @@ export default function ArtisanTemplate({ data }: { data: StorefrontData }) {
     tc?.heroImageUrl?.trim() || products.find((p) => p.imageUrl)?.imageUrl || HERO_FALLBACK;
   const tagline =
     tc?.heroDescription || store.description?.trim() || 'Craft coffee, roasted slow';
-  const openingHours = tc?.openingHours || store.openingHours?.trim() || 'Mon–Sun 7:00 AM – 9:00 PM';
+  const openingHours = data.demo
+    ? (tc?.openingHours || store.openingHours?.trim() || 'Mon–Sun 7:00 AM – 9:00 PM')
+    : (store.openingHours?.trim() || tc?.openingHours || '');
 
   const cartBarTranslate = cartCount === 0 ? 'translateY(100%)' : 'translateY(0)';
 

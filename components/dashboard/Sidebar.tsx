@@ -134,21 +134,18 @@ function buildNavItems(businessType: BusinessType, slug: string, permissions: Pe
 }
 
 function bottomNavItems(businessType: BusinessType, slug: string): NavItem[] {
-  const items: NavItem[] = [
+  return [
+    {
+      label: 'Customize Storefront',
+      href: dashboardPath(slug, 'customize-storefront'),
+      icon: Palette,
+      permission: 'STOREFRONT',
+    },
     // Store Settings and Billing are owner-only — staff run day-to-day operations, not the
     // store's configuration or its plan/payment. See OwnerOnlyGate for the matching page guard.
     { label: 'Store Settings', href: dashboardPath(slug, 'store-settings'), icon: Settings, roles: ['owner'] },
     { label: 'Billing', href: dashboardPath(slug, 'billing'), icon: CreditCard, roles: ['owner'] },
   ];
-  if (businessType === 'clothing') {
-    items.unshift({
-      label: 'Customize Storefront',
-      href: dashboardPath(slug, 'customize-storefront'),
-      icon: Palette,
-      permission: 'STOREFRONT',
-    });
-  }
-  return items;
 }
 
 interface SidebarContentProps {

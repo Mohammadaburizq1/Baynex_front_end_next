@@ -18,9 +18,9 @@ export const customerTokenStore = {
     typeof window !== 'undefined' ? localStorage.getItem(CUSTOMER_ACCESS_KEY) : null,
   getRefresh: (): string | null =>
     typeof window !== 'undefined' ? localStorage.getItem(CUSTOMER_REFRESH_KEY) : null,
-  set: (access: string, refresh: string) => {
+  set: (access: string, refresh?: string) => {
     localStorage.setItem(CUSTOMER_ACCESS_KEY, access);
-    localStorage.setItem(CUSTOMER_REFRESH_KEY, refresh);
+    if (refresh) localStorage.setItem(CUSTOMER_REFRESH_KEY, refresh); else localStorage.removeItem(CUSTOMER_REFRESH_KEY);
   },
   clear: () => {
     localStorage.removeItem(CUSTOMER_ACCESS_KEY);
@@ -40,10 +40,10 @@ let waitQueue: Array<(token: string | null) => void> = [];
 
 async function refreshCustomerToken(): Promise<string> {
   const refreshToken = customerTokenStore.getRefresh();
-  if (!refreshToken) throw new Error('No refresh token available.');
+
 
   const res = await fetch(`${API_BASE}/api/public/auth/refresh`, {
-    method: 'POST',
+    method: 'POST', credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ refreshToken }),
   });
@@ -69,7 +69,7 @@ export async function customerApiRequest<T>(
   });
 
   let token = customerTokenStore.getAccess();
-  let res = await fetch(`${API_BASE}${path}`, { ...options, headers: buildHeaders(token) });
+  let res = await fetch(`${API_BASE}${path}`, { ...options, credentials: 'include', headers: buildHeaders(token) });
 
   // On 401 — attempt a single token refresh then retry.
   if (res.status === 401 && token) {
@@ -93,7 +93,7 @@ export async function customerApiRequest<T>(
       if (!token) throw new Error('Session expired. Please sign in again.');
     }
 
-    res = await fetch(`${API_BASE}${path}`, { ...options, headers: buildHeaders(token) });
+    res = await fetch(`${API_BASE}${path}`, { ...options, credentials: 'include', headers: buildHeaders(token) });
   }
 
   if (!res.ok) {

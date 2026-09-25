@@ -131,12 +131,10 @@ function CustomizeStorefrontContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.id, templateId, isClothing]);
 
-  const previewUrl = useMemo(() => {
-    if (isClothing) {
-      return `/templates/${templateId}?preview=1&slug=${encodeURIComponent(store.slug)}&t=${previewRev}`;
-    }
-    return `/store/${encodeURIComponent(store.slug)}?preview=1&t=${previewRev}`;
-  }, [isClothing, templateId, store.slug, previewRev]);
+  const previewUrl = useMemo(
+    () => `/store/${encodeURIComponent(store.slug)}?preview=1&t=${previewRev}`,
+    [store.slug, previewRev],
+  );
 
   // ── Clothing handlers ─────────────────────────────────────────────────
   const handleClothingChange = useCallback(
@@ -152,18 +150,18 @@ function CustomizeStorefrontContent() {
   );
 
   const handleClothingSave = async () => {
-    saveClothingContent(store.slug, clothingContent);
-    updateStore({
-      description: clothingContent.heroDescription,
-      coverImage: clothingContent.heroImageUrl,
-      templateContent: clothingContent,
-    });
     try {
       await flushDraftToBackend(store.id, clothingContent as unknown as Record<string, unknown>);
+      saveClothingContent(store.slug, clothingContent);
+      updateStore({
+        description: clothingContent.heroDescription,
+        coverImage: clothingContent.heroImageUrl,
+        templateContent: clothingContent,
+      });
       setPreviewRev(Date.now());
       success('Draft saved — open preview to see changes');
     } catch {
-      showError('Saved locally, but the backend save failed — try again');
+      showError('Could not save draft — try again');
     }
   };
 
@@ -181,14 +179,14 @@ function CustomizeStorefrontContent() {
   );
 
   const handleSave = async () => {
-    saveTemplateContent(store.slug, content);
-    updateStore({ description: content.heroDescription, coverImage: content.heroImageUrl });
     try {
       await flushDraftToBackend(store.id, content as unknown as Record<string, unknown>);
+      saveTemplateContent(store.slug, content);
+      updateStore({ description: content.heroDescription, coverImage: content.heroImageUrl });
       setPreviewRev(Date.now());
       success('Draft saved — open preview to see changes');
     } catch {
-      showError('Saved locally, but the backend save failed — try again');
+      showError('Could not save draft — try again');
     }
   };
 
