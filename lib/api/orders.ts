@@ -8,6 +8,9 @@ export interface ApiOrderItem {
   quantity: number;
   unitPrice: number;
   totalPrice: number;
+  variantLabel?: string;
+  sku?: string;
+  modifiers?: { groupName: string; optionName: string; priceDelta: number }[];
 }
 
 // UI-facing shape consumed by the dashboard Orders page (apiToOrder). `status` keeps the local
@@ -28,8 +31,9 @@ export interface ApiOrder {
   discountCode?: string;
   tax?: number;
   total: number;
+  currency?: string | null;
   status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'out_for_delivery' | 'delivered' | 'cancelled' | 'refunded';
-  paymentStatus?: string;
+  paymentStatus: PaymentStatus;
   paymentMethod?: string;
   fulfillmentType?: string;
   deliveryAddress?: string;
@@ -40,9 +44,14 @@ export interface ApiOrder {
 
 // Actual shape of com.byonix.shoplink.api.dto.OrderDtos.OrderResponse/OrderItemResponse.
 // No orderNumber (it's orderCode), no per-item productName/totalPrice (productNameSnapshot/
-// total), no tax, no customerId, no paymentStatus — the backend tracks a payment *method*
-// chosen at checkout, not a payment status.
+// total), no tax, no customerId.
 type BackendOrderStatus = 'NEW' | 'CONFIRMED' | 'PREPARING' | 'READY' | 'DELIVERED' | 'CANCELLED';
+
+// paymentStatus (added independently of paymentMethod/status — see PaymentStatus.java) is manual
+// bookkeeping today: nothing on the backend sets it automatically except the initial value at
+// order creation (CASH/WHATSAPP_ONLY -> UNPAID, CARD -> PENDING). A merchant moves it forward via
+// updatePaymentStatus below.
+type BackendPaymentStatus = 'UNPAID' | 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED' | 'PARTIALLY_REFUNDED';
 
 interface ApiOrderItemRaw {
   id: string;
@@ -51,6 +60,9 @@ interface ApiOrderItemRaw {
   quantity: number;
   unitPrice: number;
   total: number;
+  variantLabel?: string | null;
+  sku?: string | null;
+  modifiers?: { groupName: string; optionName: string; priceDelta: number }[] | null;
 }
 
 interface ApiOrderRaw {
@@ -63,12 +75,14 @@ interface ApiOrderRaw {
   customerAddress?: string | null;
   deliveryMethod: 'DELIVERY' | 'PICKUP';
   paymentMethod: 'CASH' | 'CARD' | 'WHATSAPP_ONLY';
+  paymentStatus: BackendPaymentStatus;
   status: BackendOrderStatus;
   subtotal: number;
   deliveryFee: number;
   discount: number;
   discountCode?: string | null;
   total: number;
+  currency?: string | null;
   notes?: string | null;
   createdAt: string;
   items: ApiOrderItemRaw[];
@@ -96,6 +110,26 @@ const STATUS_TO_BACKEND: Partial<Record<ApiOrder['status'], BackendOrderStatus>>
   cancelled: 'CANCELLED',
 };
 
+// 'partial' <-> PARTIALLY_REFUNDED is the one non-obvious pairing; everything else is a
+// straight case-fold. See lib/types.ts's PaymentStatus doc comment.
+const PAYMENT_STATUS_FROM_BACKEND: Record<BackendPaymentStatus, PaymentStatus> = {
+  UNPAID: 'unpaid',
+  PENDING: 'pending',
+  PAID: 'paid',
+  FAILED: 'failed',
+  REFUNDED: 'refunded',
+  PARTIALLY_REFUNDED: 'partial',
+};
+
+const PAYMENT_STATUS_TO_BACKEND: Record<PaymentStatus, BackendPaymentStatus> = {
+  unpaid: 'UNPAID',
+  pending: 'PENDING',
+  paid: 'PAID',
+  failed: 'FAILED',
+  refunded: 'REFUNDED',
+  partial: 'PARTIALLY_REFUNDED',
+};
+
 function mapOrder(raw: ApiOrderRaw): ApiOrder {
   return {
     id: raw.id,
@@ -111,13 +145,18 @@ function mapOrder(raw: ApiOrderRaw): ApiOrder {
       quantity: item.quantity,
       unitPrice: item.unitPrice,
       totalPrice: item.total,
+      variantLabel: item.variantLabel ?? undefined,
+      sku: item.sku ?? undefined,
+      modifiers: item.modifiers ?? [],
     })),
     subtotal: raw.subtotal,
     deliveryFee: raw.deliveryFee,
     discount: raw.discount,
     discountCode: raw.discountCode ?? undefined,
     total: raw.total,
+    currency: raw.currency ?? null,
     status: STATUS_FROM_BACKEND[raw.status],
+    paymentStatus: PAYMENT_STATUS_FROM_BACKEND[raw.paymentStatus],
     // 'WHATSAPP_ONLY' has no equivalent in the local cash/card/online/wallet vocabulary —
     // falls back to 'cash' (closest: no separate payment processor is involved either way).
     paymentMethod: raw.paymentMethod === 'CARD' ? 'card' : 'cash',
@@ -125,8 +164,8 @@ function mapOrder(raw: ApiOrderRaw): ApiOrder {
     deliveryAddress: raw.customerAddress ?? undefined,
     notes: raw.notes ?? undefined,
     createdAt: raw.createdAt,
-    // Not sent by the backend at all: tax, customerId, paymentStatus. Left undefined —
-    // callers already fall back sensibly (see orders/page.tsx's apiToOrder).
+    // Not sent by the backend at all: tax, customerId. Left undefined — callers already fall
+    // back sensibly (see orders/page.tsx's apiToOrder).
   };
 }
 
@@ -147,6 +186,9 @@ export function apiOrderToOrder(o: ApiOrder): Order {
       quantity: item.quantity,
       unitPrice: item.unitPrice,
       totalPrice: item.totalPrice,
+      variantLabel: item.variantLabel,
+      sku: item.sku,
+      modifiers: item.modifiers,
     })),
     subtotal: o.subtotal,
     deliveryFee: o.deliveryFee ?? 0,
@@ -154,8 +196,9 @@ export function apiOrderToOrder(o: ApiOrder): Order {
     discountCode: o.discountCode,
     tax: o.tax ?? 0,
     total: o.total,
+    currency: o.currency ?? null,
     status: o.status,
-    paymentStatus: (o.paymentStatus ?? 'unpaid') as PaymentStatus,
+    paymentStatus: o.paymentStatus,
     paymentMethod: (o.paymentMethod ?? 'cash') as PaymentMethod,
     fulfillmentType: (o.fulfillmentType ?? 'pickup') as FulfillmentType,
     deliveryAddress: o.deliveryAddress,
@@ -186,6 +229,18 @@ export async function updateOrderStatus(id: string, status: ApiOrder['status']):
   const raw = await apiRequest<ApiOrderRaw>(`/api/dashboard/orders/${id}/status`, {
     method: 'PUT',
     body: JSON.stringify({ status: backendStatus }),
+  });
+  return mapOrder(raw);
+}
+
+// Manual bookkeeping, not a payment gateway callback — see PaymentStatus.java. The backend's own
+// validatePaymentTransition is the real guard (e.g. rejects refunding an order never marked paid,
+// or changing anything after REFUNDED); this call just surfaces whatever it says via a normal
+// thrown Error, same as updateOrderStatus.
+export async function updatePaymentStatus(id: string, status: PaymentStatus): Promise<ApiOrder> {
+  const raw = await apiRequest<ApiOrderRaw>(`/api/dashboard/orders/${id}/payment-status`, {
+    method: 'PUT',
+    body: JSON.stringify({ status: PAYMENT_STATUS_TO_BACKEND[status] }),
   });
   return mapOrder(raw);
 }

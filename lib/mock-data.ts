@@ -8,13 +8,13 @@ import type {
 
 export const mockStore: Store = {
   id: 'store-001',
-  name: 'ShopLink Demo Store',
+  name: 'khanGates Demo Store',
   slug: 'demo-store',
   businessType: 'restaurant',
   category: 'Fast Food',
   description: 'The best burgers and fries in town.',
   phone: '+60 12-345 6789',
-  email: 'hello@shoplink.my',
+  email: 'hello@khanGates.my',
   address: '123 Jalan Bukit Bintang, Kuala Lumpur, 55100',
   currency: 'MYR',
   timezone: 'Asia/Kuala_Lumpur',
@@ -26,7 +26,7 @@ export const mockStore: Store = {
 export const mockUser: User = {
   id: 'user-001',
   name: 'Ahmad Farid',
-  email: 'farid@shoplink.my',
+  email: 'farid@khanGates.my',
   role: 'owner',
 };
 

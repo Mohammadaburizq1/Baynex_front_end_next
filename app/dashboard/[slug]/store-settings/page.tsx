@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Store, Tag, Globe, Power, Palette, Users, UserPlus, Mail, X, ShieldCheck } from 'lucide-react';
+import { Store, Tag, Globe, Power, Palette, Users, UserPlus, Mail, X, ShieldCheck, Clock } from 'lucide-react';
 import { Header } from '@/components/dashboard/Header';
 import { OwnerOnlyGate } from '@/components/dashboard/OwnerOnlyGate';
 import { Button } from '@/components/ui/Button';
@@ -16,6 +16,8 @@ import { ALL_EDIT_GRID, type DashboardSection, type PermissionGrid, type Permiss
 import { useStore } from '@/contexts/StoreContext';
 import { dashboardPath } from '@/lib/utils/dashboard-path';
 import { cn } from '@/lib/utils';
+import { getBusinessHours, updateBusinessHours, type BusinessHoursDay } from '@/lib/api/business-hours';
+import { updateAcceptingOrders } from '@/lib/api/stores';
 
 const BUSINESS_TYPE_OPTIONS = [
   { value: 'retail', label: 'Retail Store' },
@@ -26,10 +28,13 @@ const BUSINESS_TYPE_OPTIONS = [
 ];
 
 const CURRENCY_OPTIONS = [
-  { value: 'MYR', label: 'MYR — Malaysian Ringgit' },
-  { value: 'SGD', label: 'SGD — Singapore Dollar' },
+  { value: 'JOD', label: 'JOD — Jordanian Dinar' },
   { value: 'USD', label: 'USD — US Dollar' },
-  { value: 'IDR', label: 'IDR — Indonesian Rupiah' },
+  { value: 'SAR', label: 'SAR — Saudi Riyal' },
+  { value: 'AED', label: 'AED — UAE Dirham' },
+  { value: 'EUR', label: 'EUR — Euro' },
+  { value: 'GBP', label: 'GBP — Pound Sterling' },
+  { value: 'MYR', label: 'MYR — Malaysian Ringgit' },
 ];
 
 // Matches the backend's DashboardSection enum. Inventory/Insights aren't listed separately — they
@@ -42,16 +47,28 @@ const PERMISSION_SECTIONS: { section: DashboardSection; label: string }[] = [
   { section: 'REPORTS', label: 'Reports & Insights' },
   { section: 'OFFERS', label: 'Offers' },
   { section: 'APPOINTMENTS', label: 'Appointments' },
+  { section: 'STOREFRONT', label: 'Customize Storefront' },
 ];
 
 const TIMEZONE_OPTIONS = [
-  { value: 'Asia/Kuala_Lumpur', label: 'Asia/Kuala_Lumpur (UTC+8)' },
-  { value: 'Asia/Singapore', label: 'Asia/Singapore (UTC+8)' },
-  { value: 'Asia/Jakarta', label: 'Asia/Jakarta (UTC+7)' },
-  { value: 'Asia/Bangkok', label: 'Asia/Bangkok (UTC+7)' },
-  { value: 'Asia/Tokyo', label: 'Asia/Tokyo (UTC+9)' },
+  { value: 'Asia/Amman', label: 'Asia/Amman' },
+  { value: 'Asia/Riyadh', label: 'Asia/Riyadh' },
+  { value: 'Asia/Dubai', label: 'Asia/Dubai' },
+  { value: 'Europe/London', label: 'Europe/London' },
+  { value: 'Asia/Kuala_Lumpur', label: 'Asia/Kuala_Lumpur' },
   { value: 'UTC', label: 'UTC (UTC+0)' },
 ];
+
+const LOCALE_OPTIONS = [
+  { value: 'en', label: 'English' },
+  { value: 'ar', label: 'Arabic' },
+];
+
+const BUSINESS_DAYS = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+
+function blankBusinessHours(): BusinessHoursDay[] {
+  return BUSINESS_DAYS.map(dayOfWeek => ({ dayOfWeek, closed: true, open24Hours: false, openTime: null, closeTime: null }));
+}
 
 export default function StoreSettingsPage() {
   return (
@@ -78,8 +95,9 @@ function StoreSettingsContent() {
   const [bizForm, setBizForm] = useState({
     businessType: 'retail',
     category: '',
-    currency: 'MYR',
-    timezone: 'Asia/Kuala_Lumpur',
+    currency: 'JOD',
+    timezone: 'UTC',
+    locale: 'en',
   });
 
   // Section 3: Store Status
@@ -98,8 +116,9 @@ function StoreSettingsContent() {
     setBizForm({
       businessType: store.businessType ?? 'retail',
       category: store.category ?? '',
-      currency: store.currency ?? 'MYR',
-      timezone: store.timezone ?? 'Asia/Kuala_Lumpur',
+      currency: store.currency ?? 'JOD',
+      timezone: store.timezone ?? 'UTC',
+      locale: store.locale ?? 'en',
     });
     setStoreOpen(store.acceptingOrders ?? true);
     setPublished(store.status === 'active');
@@ -107,8 +126,62 @@ function StoreSettingsContent() {
 
   const [savingInfo, setSavingInfo] = useState(false);
   const [savingBiz, setSavingBiz] = useState(false);
+  const [businessHours, setBusinessHours] = useState<BusinessHoursDay[]>(blankBusinessHours);
+  const [businessHoursConfigured, setBusinessHoursConfigured] = useState(false);
+  const [loadingBusinessHours, setLoadingBusinessHours] = useState(true);
+  const [savingBusinessHours, setSavingBusinessHours] = useState(false);
+  const [savingAcceptingOrders, setSavingAcceptingOrders] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [noProductsError, setNoProductsError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadBusinessHours() {
+      if (store.id.startsWith('local-')) {
+        setLoadingBusinessHours(false);
+        return;
+      }
+      setLoadingBusinessHours(true);
+      try {
+        const response = await getBusinessHours(store.id);
+        if (!cancelled) {
+          setBusinessHours(response.days);
+          setBusinessHoursConfigured(response.configured);
+        }
+      } catch {
+        if (!cancelled) {
+          setBusinessHours(blankBusinessHours());
+          setBusinessHoursConfigured(false);
+        }
+      } finally {
+        if (!cancelled) setLoadingBusinessHours(false);
+      }
+    }
+    loadBusinessHours();
+    return () => { cancelled = true; };
+  }, [store.id]);
+
+  const updateBusinessDay = (index: number, patch: Partial<BusinessHoursDay>) => {
+    setBusinessHours(days => days.map((day, i) => i === index ? { ...day, ...patch } : day));
+  };
+
+  const handleSaveBusinessHours = async () => {
+    if (store.id.startsWith('local-')) {
+      toastError('Save the store to the backend before configuring business hours.');
+      return;
+    }
+    setSavingBusinessHours(true);
+    try {
+      const response = await updateBusinessHours(store.id, { days: businessHours });
+      setBusinessHours(response.days);
+      setBusinessHoursConfigured(response.configured);
+      success('Business hours saved.');
+    } catch (e: any) {
+      toastError(e?.message ?? 'Could not save business hours.');
+    } finally {
+      setSavingBusinessHours(false);
+    }
+  };
 
   // ── Team / staff ─────────────────────────────────────────────────────────
   const [staff, setStaff] = useState<StaffList | null>(null);
@@ -235,34 +308,70 @@ function StoreSettingsContent() {
         address: infoForm.address,
         categorySlug: store.category || 'general-store',
       });
-    } catch { /* persist locally even if API fails */ }
-    updateStore({
-      name: infoForm.name,
-      description: infoForm.description,
-      phone: infoForm.phone,
-      email: infoForm.email,
-      address: infoForm.address,
-    });
+      // Only reflect the change locally once the server has actually accepted it — otherwise a
+      // failed save (network error, validation) used to still claim success and leave the change
+      // sitting only in local state/localStorage, silently lost on the next real store refresh.
+      updateStore({
+        name: infoForm.name,
+        description: infoForm.description,
+        phone: infoForm.phone,
+        email: infoForm.email,
+        address: infoForm.address,
+      });
+      success('Store information saved successfully');
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : 'Could not save store information. Please try again.');
+    }
     setSavingInfo(false);
-    success('Store information saved successfully');
   }
 
   async function handleSaveBiz() {
     setSavingBiz(true);
-    updateStore({
-      businessType: bizForm.businessType as any,
-      category: bizForm.category,
-      currency: bizForm.currency,
-      timezone: bizForm.timezone,
-    });
+    try {
+      const { updateStore: apiUpdate } = await import('@/lib/api/stores');
+      await apiUpdate(store.id, {
+        name: store.name,
+        slug: store.slug,
+        description: store.description,
+        phone: store.phone,
+        email: store.email,
+        address: store.address,
+        categorySlug: bizForm.category || store.category || 'general-store',
+        templateKey: store.theme,
+        currency: bizForm.currency,
+        timezone: bizForm.timezone,
+        locale: bizForm.locale,
+      });
+      updateStore({
+        businessType: bizForm.businessType as any,
+        category: bizForm.category,
+        currency: bizForm.currency,
+        timezone: bizForm.timezone,
+        locale: bizForm.locale,
+      });
+      success('Business settings saved successfully');
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : 'Could not save business settings. Please try again.');
+    }
     setSavingBiz(false);
-    success('Business settings saved successfully');
   }
 
-  function handleToggleOpen(open: boolean) {
-    setStoreOpen(open);
-    updateStore({ acceptingOrders: open });
-    success(open ? 'Store is now open and accepting orders' : 'Store closed');
+  async function handleToggleOpen(open: boolean) {
+    if (store.id.startsWith('local-')) {
+      toastError('Save your store to the backend before changing order acceptance.');
+      return;
+    }
+    setSavingAcceptingOrders(true);
+    try {
+      const saved = await updateAcceptingOrders(store.id, open);
+      setStoreOpen(saved.acceptingOrders ?? open);
+      updateStore({ acceptingOrders: saved.acceptingOrders ?? open });
+      success(open ? 'Online ordering resumed' : 'New orders paused');
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : 'Could not update order acceptance.');
+    } finally {
+      setSavingAcceptingOrders(false);
+    }
   }
 
   async function handleTogglePublish(pub: boolean) {
@@ -392,6 +501,12 @@ function StoreSettingsContent() {
                 value={bizForm.timezone}
                 onChange={e => setBizForm(p => ({ ...p, timezone: e.target.value }))}
               />
+              <Select
+                label="Default language"
+                options={LOCALE_OPTIONS}
+                value={bizForm.locale}
+                onChange={e => setBizForm(p => ({ ...p, locale: e.target.value }))}
+              />
             </div>
             <div className="flex justify-end pt-1">
               <Button onClick={handleSaveBiz} loading={savingBiz}>Save Changes</Button>
@@ -400,6 +515,64 @@ function StoreSettingsContent() {
         </Card>
 
         {/* ── Section 3: Store Status ────────────────────────────────── */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-sky-100 rounded-lg">
+                <Clock size={16} className="text-sky-600" />
+              </div>
+              <CardTitle>Business Hours</CardTitle>
+            </div>
+            <Badge variant={businessHoursConfigured ? 'success' : 'default'}>
+              {businessHoursConfigured ? 'Configured' : 'Not configured'}
+            </Badge>
+          </CardHeader>
+          <CardDescription className="mb-4">
+            Set the weekly schedule used to show open or closed status in your storefront. Times use your selected timezone.
+          </CardDescription>
+          {loadingBusinessHours ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="w-6 h-6 rounded-full border-2 border-primary-500 border-t-transparent animate-spin" />
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {businessHours.map((day, index) => (
+                <div key={day.dayOfWeek} className="grid grid-cols-[minmax(100px,1fr)_auto_minmax(105px,1fr)_auto_minmax(105px,1fr)] items-center gap-2 rounded-lg border border-surface-200 px-3 py-2">
+                  <span className="text-sm font-medium text-slate-700 capitalize">{day.dayOfWeek.toLowerCase()}</span>
+                  <Toggle
+                    checked={!day.closed}
+                    onChange={checked => updateBusinessDay(index, checked
+                      ? { closed: false, open24Hours: false, openTime: day.openTime ?? '09:00', closeTime: day.closeTime ?? '17:00' }
+                      : { closed: true, open24Hours: false, openTime: null, closeTime: null })}
+                    aria-label={`${day.dayOfWeek} open`}
+                  />
+                  {day.closed ? (
+                    <span className="col-span-3 text-sm text-slate-400">Closed</span>
+                  ) : day.open24Hours ? (
+                    <label className="col-span-3 flex items-center gap-1.5 text-sm text-slate-600">
+                      <input type="checkbox" checked onChange={() => updateBusinessDay(index, { open24Hours: false, openTime: '09:00', closeTime: '17:00' })} />
+                      Open 24 hours
+                    </label>
+                  ) : (
+                    <>
+                      <input aria-label={`${day.dayOfWeek} opening time`} type="time" value={day.openTime ?? ''} onChange={e => updateBusinessDay(index, { openTime: e.target.value })} className="h-9 rounded-lg border border-surface-300 px-2 text-sm text-slate-700" />
+                      <span className="text-slate-400">to</span>
+                      <input aria-label={`${day.dayOfWeek} closing time`} type="time" value={day.closeTime ?? ''} onChange={e => updateBusinessDay(index, { closeTime: e.target.value })} className="h-9 rounded-lg border border-surface-300 px-2 text-sm text-slate-700" />
+                      <label className="col-span-2 flex items-center gap-1.5 text-xs text-slate-500">
+                        <input type="checkbox" checked={day.open24Hours} onChange={e => updateBusinessDay(index, { open24Hours: e.target.checked, openTime: e.target.checked ? null : (day.openTime ?? '09:00'), closeTime: e.target.checked ? null : (day.closeTime ?? '17:00') })} />
+                        24 hours
+                      </label>
+                    </>
+                  )}
+                </div>
+              ))}
+              <div className="flex justify-end pt-2">
+                <Button onClick={handleSaveBusinessHours} loading={savingBusinessHours}>Save Business Hours</Button>
+              </div>
+            </div>
+          )}
+        </Card>
+
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
@@ -431,12 +604,13 @@ function StoreSettingsContent() {
                   <p className="text-sm mt-0.5 text-slate-500">
                     {storeOpen
                       ? 'Your store is accepting orders'
-                      : 'Your store is not visible to customers'}
+                      : 'Online ordering is paused. Your storefront stays visible.'}
                   </p>
                 </div>
                 <Toggle
                   checked={storeOpen}
                   onChange={handleToggleOpen}
+                  disabled={savingAcceptingOrders}
                   aria-label="Toggle store open/closed"
                 />
               </div>
@@ -447,7 +621,7 @@ function StoreSettingsContent() {
               <div>
                 <p className="text-sm font-medium text-slate-700">Publish Store</p>
                 <p className="text-xs text-slate-500 mt-0.5 max-w-xs">
-                  Make your store publicly accessible via your ShopLink URL. Unpublishing hides it from all customers.
+                  Make your store publicly accessible via your khanGates URL. Unpublishing hides it from all customers.
                 </p>
                 {noProductsError && (
                   <p className="text-xs text-red-600 mt-1.5">

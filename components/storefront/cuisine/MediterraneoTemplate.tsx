@@ -1,14 +1,20 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Lora, DM_Sans } from 'next/font/google';
-import type { StorefrontData } from '@/lib/types/store';
-import { ShoppingBag, X, Minus, Plus, Leaf } from 'lucide-react';
+import type { StorefrontData, PublicProduct } from '@/lib/types/store';
+import { ShoppingBag, Leaf } from 'lucide-react';
+import CheckoutDrawer from '@/components/storefront/restaurant-default/CheckoutDrawer';
+import { ProductOptionsDialog } from '@/components/storefront/shared/ProductOptionsDialog';
+import { readCartDraft, clearCartDraft } from '@/lib/utils/cart-draft';
+import {
+  addLine, cartCount as countOf, cartSubtotal, changeQty as changeLineQty, needsOptions, removeLine, restoreFromDraft,
+  type CartLine,
+} from '@/lib/utils/cart-lines';
 
 const lora = Lora({ subsets: ['latin'], weight: ['400', '500', '600', '700'], style: ['normal', 'italic'] });
 const dmSans = DM_Sans({ subsets: ['latin'], weight: ['300', '400', '500', '700'] });
-
-type CartItem = { id: number; name: string; price: number; qty: number };
 
 const CATEGORIES = ['All', 'Mains', 'Mezze', 'Grills', 'Desserts'];
 
@@ -25,31 +31,42 @@ const CARD_COLORS = ['#C0562A', '#6B7A3C', '#D4A843', '#7C4A2D', '#4A6741'];
 
 export default function MediterraneoTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  // Real stores filter by their own categories; the fixed list is showcase-only (it matched nothing real).
+  const categories = data.demo ? CATEGORIES : ['All', ...Array.from(new Set(products.map(p => p.category).filter(Boolean)))];
   const tc = data.templateContent;
   const [activeCategory, setActiveCategory] = useState('All');
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartLine[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
+  // The product whose variant / add-on choices are being made (null = dialog closed).
+  const [optionsFor, setOptionsFor] = useState<PublicProduct | null>(null);
+
+  // Restore a cart saved before a guest was redirected to /customer/login (see CheckoutDrawer).
+  useEffect(() => {
+    const draft = readCartDraft(store.slug);
+    if (!draft || draft.length === 0) return;
+    const restored = restoreFromDraft(draft, products);
+    if (restored.length > 0) {
+      setCart(restored);
+      setCartOpen(true);
+    }
+    clearCartDraft(store.slug);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.slug]);
 
   const filtered =
     activeCategory === 'All' ? products : products.filter((p) => p.category === activeCategory);
 
-  const addToCart = (p: (typeof products)[0]) => {
-    setCart((prev) => {
-      const exists = prev.find((c) => c.id === p.id);
-      if (exists) return prev.map((c) => (c.id === p.id ? { ...c, qty: c.qty + 1 } : c));
-      return [...prev, { id: p.id, name: p.name, price: p.discountPrice ?? p.price, qty: 1 }];
-    });
+  const addToCart = (p: PublicProduct) => {
+    // A product with variants or add-ons needs the customer to choose first.
+    if (needsOptions(p)) {
+      setOptionsFor(p);
+      return;
+    }
+    setCart((prev) => addLine(prev, p, 1));
   };
 
-  const changeQty = (id: number, delta: number) =>
-    setCart((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, qty: c.qty + delta } : c)).filter((c) => c.qty > 0)
-    );
-
-  const total = cart.reduce((sum, c) => sum + c.price * c.qty, 0);
-  const itemCount = cart.reduce((sum, c) => sum + c.qty, 0);
-  const waMsg = `Hi! I'd like to order: ${cart.map((c) => `${c.qty}x ${c.name}`).join(', ')}. Total: $${total.toFixed(2)}`;
-  const waHref = `https://wa.me/${(store.whatsappNumber ?? '').replace(/\D/g, '')}?text=${encodeURIComponent(waMsg)}`;
+  const total = cartSubtotal(cart);
+  const itemCount = countOf(cart);
 
   return (
     <>
@@ -187,7 +204,7 @@ export default function MediterraneoTemplate({ data }: { data: StorefrontData })
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center', justifyContent: 'space-between', marginBottom: 36 }}>
               <h2 className={lora.className} style={{ fontSize: 36, color: '#2C1810', fontStyle: 'italic' }}>Our Kitchen</h2>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {CATEGORIES.map((cat) => (
+                {categories.map((cat) => (
                   <button key={cat} className={`med-tab${activeCategory === cat ? ' active' : ''} ${dmSans.className}`} style={{ fontSize: 14, fontWeight: 700 }} onClick={() => setActiveCategory(cat)}>
                     {cat}
                   </button>
@@ -218,11 +235,11 @@ export default function MediterraneoTemplate({ data }: { data: StorefrontData })
                         <div>
                           {p.discountPrice ? (
                             <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                              <span className={lora.className} style={{ fontSize: 22, fontWeight: 700, color: '#C0562A' }}>${p.discountPrice.toFixed(2)}</span>
-                              <span className={dmSans.className} style={{ fontSize: 13, color: '#C4A89A', textDecoration: 'line-through' }}>${p.price.toFixed(2)}</span>
+                              <span className={lora.className} style={{ fontSize: 22, fontWeight: 700, color: '#C0562A' }}>{formatMoney(p.discountPrice, store.currencySuffix)}</span>
+                              <span className={dmSans.className} style={{ fontSize: 13, color: '#C4A89A', textDecoration: 'line-through' }}>{formatMoney(p.price, store.currencySuffix)}</span>
                             </div>
                           ) : (
-                            <span className={lora.className} style={{ fontSize: 22, fontWeight: 700, color: '#C0562A' }}>${p.price.toFixed(2)}</span>
+                            <span className={lora.className} style={{ fontSize: 22, fontWeight: 700, color: '#C0562A' }}>{formatMoney(p.price, store.currencySuffix)}</span>
                           )}
                         </div>
                         <button className={`med-add ${dmSans.className}`} style={{ fontSize: 14 }} onClick={() => addToCart(p)}>Add +</button>
@@ -235,46 +252,26 @@ export default function MediterraneoTemplate({ data }: { data: StorefrontData })
           </div>
         </section>
 
-        {/* Cart sidebar */}
-        {cartOpen && (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 100 }}>
-            <div style={{ position: 'absolute', inset: 0, background: 'rgba(44,24,16,0.4)' }} onClick={() => setCartOpen(false)} />
-            <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 360, background: '#FDF8F2', borderLeft: '1px solid #E8D5C0', animation: 'cartIn 0.28s ease', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ padding: '20px 24px', borderBottom: '1px solid #E8D5C0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <h3 className={lora.className} style={{ fontSize: 24, color: '#2C1810', fontStyle: 'italic' }}>Your Order</h3>
-                <button onClick={() => setCartOpen(false)} style={{ background: 'none', border: 'none', color: '#8C6B55', cursor: 'pointer' }}><X size={20} /></button>
-              </div>
-              <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
-                {cart.length === 0 ? (
-                  <p className={dmSans.className} style={{ color: '#C4A89A', textAlign: 'center', marginTop: 48, lineHeight: 1.8 }}>Your table is set.<br />Add something delicious!</p>
-                ) : cart.map((item) => (
-                  <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #E8D5C0' }}>
-                    <div style={{ flex: 1 }}>
-                      <p className={dmSans.className} style={{ color: '#2C1810', fontWeight: 700, fontSize: 14 }}>{item.name}</p>
-                      <p className={dmSans.className} style={{ color: '#8C6B55', fontSize: 13 }}>${(item.price * item.qty).toFixed(2)}</p>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <button onClick={() => changeQty(item.id, -1)} style={{ background: '#F0E8DC', border: 'none', color: '#C0562A', width: 26, height: 26, borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Minus size={12} /></button>
-                      <span className={dmSans.className} style={{ color: '#2C1810', fontWeight: 700, fontSize: 14, minWidth: 16, textAlign: 'center' }}>{item.qty}</span>
-                      <button onClick={() => changeQty(item.id, 1)} style={{ background: '#F0E8DC', border: 'none', color: '#C0562A', width: 26, height: 26, borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={12} /></button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {cart.length > 0 && (
-                <div style={{ padding: '20px 24px', borderTop: '1px solid #E8D5C0' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                    <span className={dmSans.className} style={{ color: '#8C6B55', fontWeight: 700 }}>Total</span>
-                    <span className={lora.className} style={{ color: '#C0562A', fontSize: 22, fontWeight: 700 }}>${total.toFixed(2)}</span>
-                  </div>
-                  <a href={waHref} target="_blank" rel="noopener noreferrer" style={{ display: 'block', background: 'linear-gradient(135deg, #C0562A, #D4A843)', color: 'white', borderRadius: 100, padding: '14px', textAlign: 'center', fontFamily: dmSans.style.fontFamily, fontWeight: 700, fontSize: 15, textDecoration: 'none', boxShadow: '0 8px 24px rgba(192,86,42,0.28)' }}>
-                    Order via WhatsApp
-                  </a>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        <ProductOptionsDialog
+          product={optionsFor}
+          currencySuffix={store.currencySuffix}
+          accent="#C0562A"
+          onClose={() => setOptionsFor(null)}
+          onConfirm={(selection, qty) => {
+            if (optionsFor) setCart((prev) => addLine(prev, optionsFor, qty, selection));
+            setOptionsFor(null);
+          }}
+        />
+        <CheckoutDrawer
+          open={cartOpen}
+          onClose={() => setCartOpen(false)}
+          storeSlug={store.slug}
+          cart={cart}
+          currencySuffix={store.currencySuffix}
+          onChangeQty={(key, delta) => setCart((prev) => changeLineQty(prev, key, delta))}
+          onRemove={(key) => setCart((prev) => removeLine(prev, key))}
+          onOrderPlaced={() => setCart([])}
+        />
 
         {/* Bottom cart bar */}
         {itemCount > 0 && !cartOpen && (
@@ -282,7 +279,7 @@ export default function MediterraneoTemplate({ data }: { data: StorefrontData })
             <div style={{ maxWidth: 600, margin: '0 auto' }}>
               <button onClick={() => setCartOpen(true)} className={dmSans.className} style={{ width: '100%', background: 'linear-gradient(135deg, #C0562A, #D4A843)', border: 'none', borderRadius: 100, padding: '15px 24px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 8px 28px rgba(192,86,42,0.38)' }}>
                 <span style={{ color: 'white', fontWeight: 700, fontSize: 14 }}>{itemCount} item{itemCount !== 1 ? 's' : ''}</span>
-                <span style={{ color: 'white', fontWeight: 700, fontSize: 15 }}>View Cart · ${total.toFixed(2)}</span>
+                <span style={{ color: 'white', fontWeight: 700, fontSize: 15 }}>View Cart · {formatMoney(total, store.currencySuffix)}</span>
               </button>
             </div>
           </div>

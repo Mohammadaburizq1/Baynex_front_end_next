@@ -1,4 +1,5 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
 import { useState, useEffect, useRef } from 'react';
 import { Bebas_Neue, Source_Sans_3 } from 'next/font/google';
@@ -114,7 +115,9 @@ export default function ObsidianStudioTemplate({ data }: { data: StorefrontData 
   }, []);
 
   const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
-  const waBase = `https://wa.me/${(store.whatsappNumber ?? '').replace(/\D/g, '')}`;
+  const waDigits = (store.whatsappNumber ?? '').replace(/\D/g, '');
+  // No number, no WhatsApp CTAs: a bare wa.me link opens WhatsApp with no recipient.
+  const waBase = waDigits ? `https://wa.me/${waDigits}` : null;
 
   const up = (v: boolean, d = 0): React.CSSProperties => ({
     opacity: v ? 1 : 0,
@@ -615,10 +618,12 @@ export default function ObsidianStudioTemplate({ data }: { data: StorefrontData 
             <div className={`os-logo-name ${bebasNeue.className}`}>{store.shopName}</div>
           </div>
           <div className="os-nav-links">
-            {[['Work','os-gallery'],['Services','os-services'],['Process','os-process'],['Team','os-team'],['Contact','os-contact']].map(([l,id]) => (
+            {[['Work','os-gallery'],['Services','os-services'],['Process','os-process'],...(data.demo ? [['Team','os-team']] : []),['Contact','os-contact']].map(([l,id]) => (
               <button key={id} className="os-nav-link" onClick={() => scrollTo(id)}>{l}</button>
             ))}
+            {waBase && (
             <button className="os-nav-cta" onClick={() => window.open(waBase,'_blank')}>Get Quote</button>
+            )}
           </div>
         </div>
       </nav>
@@ -649,6 +654,7 @@ export default function ObsidianStudioTemplate({ data }: { data: StorefrontData 
               <button className="os-btn-outline" onClick={() => scrollTo('os-contact')}>Start a Project</button>
             </div>
           </div>
+          {data.demo && (
           <div className="os-hero-right">
             {[
               { num: c1, sfx: '+', label: 'Projects Delivered' },
@@ -661,10 +667,12 @@ export default function ObsidianStudioTemplate({ data }: { data: StorefrontData 
               </div>
             ))}
           </div>
+          )}
         </div>
       </div>
 
       {/* ── CLIENTS TICKER ── */}
+      {data.demo && (<>
       <div className="os-clients" ref={clientRef}>
         <div className="os-clients-track">
           {[...CLIENTS, ...CLIENTS, ...CLIENTS, ...CLIENTS].map((c, i) => (
@@ -672,8 +680,10 @@ export default function ObsidianStudioTemplate({ data }: { data: StorefrontData 
           ))}
         </div>
       </div>
+      </>)}
 
       {/* ── STATS ── */}
+      {data.demo && (<>
       <div className="os-stats">
         <div className="os-stats-inner">
           {[
@@ -689,6 +699,7 @@ export default function ObsidianStudioTemplate({ data }: { data: StorefrontData 
           ))}
         </div>
       </div>
+      </>)}
 
       {/* ── SERVICES ── */}
       <div id="os-services">
@@ -708,7 +719,7 @@ export default function ObsidianStudioTemplate({ data }: { data: StorefrontData 
                     className="os-svc-row"
                     onMouseEnter={() => setHoveredSvc(i)}
                     onMouseLeave={() => setHoveredSvc(null)}
-                    onClick={() => window.open(`${waBase}?text=${encodeURIComponent(msg)}`, '_blank')}
+                    onClick={waBase ? () => window.open(`${waBase}?text=${encodeURIComponent(msg)}`, '_blank') : undefined}
                   >
                     <div className="os-svc-num">0{i + 1}</div>
                     <div className="os-svc-main">
@@ -716,7 +727,7 @@ export default function ObsidianStudioTemplate({ data }: { data: StorefrontData 
                       <div className="os-svc-name">{svc.name}</div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-                      <div className="os-svc-price">${svc.price}</div>
+                      <div className="os-svc-price">{formatMoney(svc.discountPrice ?? svc.price, store.currencyCode)}</div>
                       <ArrowUpRight size={18} className="os-svc-arrow" />
                     </div>
                   </div>
@@ -778,6 +789,7 @@ export default function ObsidianStudioTemplate({ data }: { data: StorefrontData 
       </div>
 
       {/* ── TEAM ── */}
+      {data.demo && (<>
       <div id="os-team">
         <div className="os-wrap" ref={teamRef}>
           <div className="os-section-header" style={up(teamVis)}>
@@ -793,17 +805,21 @@ export default function ObsidianStudioTemplate({ data }: { data: StorefrontData 
                   <div className="os-agent-spec">{t.spec}</div>
                   <div className={`os-agent-name ${bebasNeue.className}`}>{t.name}</div>
                   <div className="os-agent-title">{t.title}</div>
+                  {waBase && (
                   <a className="os-agent-wa" href={`${waBase}?text=${encodeURIComponent(`Hi, I'd like to work with ${t.name}.`)}`} target="_blank" rel="noopener noreferrer">
                     Connect <ArrowRight size={11} />
                   </a>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         </div>
       </div>
+      </>)}
 
       {/* ── TESTIMONIALS ── */}
+      {data.demo && (<>
       <div className="os-test-band" ref={testRef}>
         <div className="os-test-inner">
           <div style={up(testVis)}>
@@ -833,6 +849,7 @@ export default function ObsidianStudioTemplate({ data }: { data: StorefrontData 
           </div>
         </div>
       </div>
+      </>)}
 
       {/* ── CTA ── */}
       <div id="os-contact" className="os-cta-band" ref={ctaRef}>
@@ -841,10 +858,12 @@ export default function ObsidianStudioTemplate({ data }: { data: StorefrontData 
             Let's Build<br />Something<br />Unforgettable.
           </h2>
           <div className="os-cta-row" style={up(ctaVis, 100)}>
+            {waBase && (
             <a className="os-cta-wa" href={waBase} target="_blank" rel="noopener noreferrer">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
               Start a Project
             </a>
+            )}
             <span className="os-cta-sub"><ChevronRight size={12} />Response within 24 hours</span>
           </div>
           <div className="os-cta-details" style={up(ctaVis, 160)}>

@@ -1,8 +1,25 @@
 import type { TemplateContent } from '@/lib/types/template-content';
+import { CURRENT_TEMPLATE_CONTENT_SCHEMA_VERSION } from '@/lib/types/template-content';
 import { getTemplateDefaults } from '@/lib/data/template-presets';
+import { saveThemeDraft } from '@/lib/api/theme-content';
 
 const KEY = (slug: string) => `shoplink_tpl_${slug}`;
 const DRAFT_KEY = 'shoplink_tpl_draft';
+
+/**
+ * Upgrades a content blob loaded from the backend (or localStorage) to the current
+ * TemplateContent shape. A no-op today (only schema version 1 exists) — the seam future field
+ * renames/restructures plug into, keyed off the saved schemaVersion. Called from
+ * mergeTemplateContent() below, so every load path runs through it.
+ */
+export function migrateTemplateContent(raw: Partial<TemplateContent>): Partial<TemplateContent> {
+  switch (raw.schemaVersion) {
+    case CURRENT_TEMPLATE_CONTENT_SCHEMA_VERSION:
+    case undefined:
+    default:
+      return { ...raw, schemaVersion: CURRENT_TEMPLATE_CONTENT_SCHEMA_VERSION };
+  }
+}
 
 function merge(
   base: TemplateContent,
@@ -24,7 +41,7 @@ export function mergeTemplateContent(
   overrides?: Partial<TemplateContent> | null,
 ): TemplateContent {
   const base = getTemplateDefaults(templateId);
-  return overrides ? merge(base, overrides) : base;
+  return overrides ? merge(base, migrateTemplateContent(overrides)) : base;
 }
 
 export function saveTemplateContent(slug: string, content: Partial<TemplateContent>): void {
@@ -70,6 +87,36 @@ export function readTemplateContent(slug: string, templateId: string): TemplateC
 export function clearDraft(): void {
   if (typeof window === 'undefined') return;
   try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+}
+
+const backendDraftTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const BACKEND_DRAFT_DEBOUNCE_MS = 800;
+
+/**
+ * Durable backend draft save, debounced per store so rapid edits (typing) don't fire a request
+ * per keystroke. Separate from saveDraft()/loadDraft() above, which drive the instant same-tab
+ * live-preview iframe and stay purely local.
+ */
+export function persistDraftDebounced(storeId: string, content: Record<string, unknown>): void {
+  const existing = backendDraftTimers.get(storeId);
+  if (existing) clearTimeout(existing);
+  backendDraftTimers.set(
+    storeId,
+    setTimeout(() => {
+      backendDraftTimers.delete(storeId);
+      saveThemeDraft(storeId, content).catch(() => { /* next debounced/explicit save will retry */ });
+    }, BACKEND_DRAFT_DEBOUNCE_MS),
+  );
+}
+
+/** Bypasses the debounce — used by an explicit "Save" click. */
+export function flushDraftToBackend(storeId: string, content: Record<string, unknown>): Promise<void> {
+  const existing = backendDraftTimers.get(storeId);
+  if (existing) {
+    clearTimeout(existing);
+    backendDraftTimers.delete(storeId);
+  }
+  return saveThemeDraft(storeId, content).then(() => undefined);
 }
 
 export function parseList(value: string | undefined): string[] {

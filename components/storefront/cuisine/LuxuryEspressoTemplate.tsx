@@ -1,9 +1,22 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
-import { useState } from 'react';
-import type { StorefrontData } from '@/lib/types/store';
+import { useEffect, useState } from 'react';
+import type { StorefrontData, PublicProduct } from '@/lib/types/store';
 import { ShoppingBag, Plus, Minus } from 'lucide-react';
 import { Playfair_Display, Cormorant_Garamond } from 'next/font/google';
+import CheckoutDrawer from '@/components/storefront/restaurant-default/CheckoutDrawer';
+import { ProductOptionsDialog } from '@/components/storefront/shared/ProductOptionsDialog';
+import { readCartDraft, clearCartDraft } from '@/lib/utils/cart-draft';
+import {
+  addLine, cartCount as countOf, cartSubtotal, changeQty as changeLineQty, needsOptions, removeLine, restoreFromDraft,
+  type CartLine,
+} from '@/lib/utils/cart-lines';
+
+/** Key of the one (no variant, no add-ons) line a plain product gets — matches lineKey()'s format. */
+function simpleKey(productId: number): string {
+  return `${productId}||`;
+}
 
 const playfair = Playfair_Display({ subsets: ['latin'], weight: ['400', '600', '700', '900'], style: ['normal', 'italic'], display: 'swap' });
 const cormorant = Cormorant_Garamond({ subsets: ['latin'], weight: ['300', '400', '500', '600'], display: 'swap' });
@@ -15,22 +28,43 @@ const GOLD_DIM = 'rgba(201,168,76,0.35)';
 export default function LuxuryEspressoTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
   const tc = data.templateContent;
-  const [cart, setCart] = useState<Record<number, number>>({});
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [cartOpen, setCartOpen] = useState(false);
+  // The product whose variant / add-on choices are being made (null = dialog closed).
+  const [optionsFor, setOptionsFor] = useState<PublicProduct | null>(null);
   const [activeCategory, setActiveCategory] = useState('All');
 
-  const totalItems = Object.values(cart).reduce((a, b) => a + b, 0);
-  const totalPrice = Object.entries(cart).reduce((sum, [id, qty]) => {
-    const p = products.find(p => p.id === Number(id));
-    return sum + (p ? (p.discountPrice ?? p.price) * qty : 0);
-  }, 0);
+  // Restore a cart saved before a guest was redirected to /customer/login (see CheckoutDrawer).
+  useEffect(() => {
+    const draft = readCartDraft(store.slug);
+    if (!draft || draft.length === 0) return;
+    const restored = restoreFromDraft(draft, products);
+    if (restored.length > 0) {
+      setCart(restored);
+      setCartOpen(true);
+    }
+    clearCartDraft(store.slug);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.slug]);
 
-  const add = (id: number) => setCart(c => ({ ...c, [id]: (c[id] ?? 0) + 1 }));
-  const sub = (id: number) => setCart(c => {
-    const n = { ...c };
-    if ((n[id] ?? 0) > 1) n[id]--;
-    else delete n[id];
-    return n;
-  });
+  const totalItems = countOf(cart);
+  const totalPrice = cartSubtotal(cart);
+
+  function qtyOf(productId: number): number {
+    return cart.filter(l => l.product.id === productId).reduce((s, l) => s + l.qty, 0);
+  }
+
+  const add = (id: number) => {
+    const product = products.find(p => p.id === id);
+    if (!product) return;
+    // A product with variants or add-ons needs the customer to choose first.
+    if (needsOptions(product)) {
+      setOptionsFor(product);
+      return;
+    }
+    setCart(prev => addLine(prev, product, 1));
+  };
+  const sub = (id: number) => setCart(prev => changeLineQty(prev, simpleKey(id), -1));
 
   const available = products.filter(p => p.available);
   const categories = ['All', ...Array.from(new Set(available.map(p => p.category)))];
@@ -198,8 +232,8 @@ export default function LuxuryEspressoTemplate({ data }: { data: StorefrontData 
           {/* Tasting-menu list */}
           <div style={{ borderTop: `1px solid rgba(201,168,76,0.12)` }}>
             {filtered.map((product, i) => {
-              const qty = cart[product.id] ?? 0;
-              const display = (product.discountPrice ?? product.price).toFixed(2);
+              const qty = qtyOf(product.id);
+              const display = formatMoney(product.discountPrice ?? product.price, store.currencySuffix);
 
               return (
                 <div
@@ -226,11 +260,11 @@ export default function LuxuryEspressoTemplate({ data }: { data: StorefrontData 
                   <div className="shrink-0 flex flex-col items-end gap-3 pl-4">
                     <div className="text-right">
                       <span className={`${playfair.className} text-xl font-semibold`} style={{ color: GOLD }}>
-                        ${display}
+                        {display}
                       </span>
                       {product.discountPrice && (
                         <span className="ml-2 text-sm line-through" style={{ color: 'rgba(201,168,76,0.3)' }}>
-                          ${product.price.toFixed(2)}
+                          {formatMoney(product.price, store.currencySuffix)}
                         </span>
                       )}
                     </div>
@@ -280,16 +314,38 @@ export default function LuxuryEspressoTemplate({ data }: { data: StorefrontData 
                 </span>
               </div>
               <button
+                onClick={() => setCartOpen(true)}
                 className="px-8 py-2.5 text-sm tracking-[0.2em] uppercase cursor-pointer transition-all duration-200"
                 style={{ border: `1px solid ${GOLD}`, color: '#080808', background: GOLD }}
                 onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = GOLD_LIGHT; }}
                 onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = GOLD; }}
               >
-                Checkout — ${totalPrice.toFixed(2)}
+                Checkout — {formatMoney(totalPrice, store.currencySuffix)}
               </button>
             </div>
           </div>
         )}
+
+        <ProductOptionsDialog
+          product={optionsFor}
+          currencySuffix={store.currencySuffix}
+          accent={GOLD}
+          onClose={() => setOptionsFor(null)}
+          onConfirm={(selection, qty) => {
+            if (optionsFor) setCart(prev => addLine(prev, optionsFor, qty, selection));
+            setOptionsFor(null);
+          }}
+        />
+        <CheckoutDrawer
+          open={cartOpen}
+          onClose={() => setCartOpen(false)}
+          storeSlug={store.slug}
+          cart={cart}
+          currencySuffix={store.currencySuffix}
+          onChangeQty={(key, delta) => setCart(prev => changeLineQty(prev, key, delta))}
+          onRemove={(key) => setCart(prev => removeLine(prev, key))}
+          onOrderPlaced={() => setCart([])}
+        />
       </div>
     </>
   );

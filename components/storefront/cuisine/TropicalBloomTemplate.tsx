@@ -1,9 +1,22 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
-import { useState } from 'react';
-import type { StorefrontData } from '@/lib/types/store';
+import { useEffect, useState } from 'react';
+import type { StorefrontData, PublicProduct } from '@/lib/types/store';
 import { ShoppingBag, Plus, Minus } from 'lucide-react';
 import { Pacifico, Nunito } from 'next/font/google';
+import CheckoutDrawer from '@/components/storefront/restaurant-default/CheckoutDrawer';
+import { ProductOptionsDialog } from '@/components/storefront/shared/ProductOptionsDialog';
+import { readCartDraft, clearCartDraft } from '@/lib/utils/cart-draft';
+import {
+  addLine, cartCount as countOf, cartSubtotal, changeQty as changeLineQty, needsOptions, removeLine, restoreFromDraft,
+  type CartLine,
+} from '@/lib/utils/cart-lines';
+
+/** Key of the one (no variant, no add-ons) line a plain product gets — matches lineKey()'s format. */
+function simpleKey(productId: number): string {
+  return `${productId}||`;
+}
 
 const pacifico = Pacifico({ subsets: ['latin'], weight: ['400'], display: 'swap' });
 const nunito = Nunito({ subsets: ['latin'], weight: ['400', '500', '600', '700', '800'], display: 'swap' });
@@ -36,22 +49,43 @@ const LEAVES = [
 export default function TropicalBloomTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
   const tc = data.templateContent;
-  const [cart, setCart] = useState<Record<number, number>>({});
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [cartOpen, setCartOpen] = useState(false);
+  // The product whose variant / add-on choices are being made (null = dialog closed).
+  const [optionsFor, setOptionsFor] = useState<PublicProduct | null>(null);
   const [activeCategory, setActiveCategory] = useState('All');
 
-  const totalItems = Object.values(cart).reduce((a, b) => a + b, 0);
-  const totalPrice = Object.entries(cart).reduce((sum, [id, qty]) => {
-    const p = products.find(p => p.id === Number(id));
-    return sum + (p ? (p.discountPrice ?? p.price) * qty : 0);
-  }, 0);
+  // Restore a cart saved before a guest was redirected to /customer/login (see CheckoutDrawer).
+  useEffect(() => {
+    const draft = readCartDraft(store.slug);
+    if (!draft || draft.length === 0) return;
+    const restored = restoreFromDraft(draft, products);
+    if (restored.length > 0) {
+      setCart(restored);
+      setCartOpen(true);
+    }
+    clearCartDraft(store.slug);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.slug]);
 
-  const add = (id: number) => setCart(c => ({ ...c, [id]: (c[id] ?? 0) + 1 }));
-  const sub = (id: number) => setCart(c => {
-    const n = { ...c };
-    if ((n[id] ?? 0) > 1) n[id]--;
-    else delete n[id];
-    return n;
-  });
+  const totalItems = countOf(cart);
+  const totalPrice = cartSubtotal(cart);
+
+  function qtyOf(productId: number): number {
+    return cart.filter(l => l.product.id === productId).reduce((s, l) => s + l.qty, 0);
+  }
+
+  const add = (id: number) => {
+    const product = products.find(p => p.id === id);
+    if (!product) return;
+    // A product with variants or add-ons needs the customer to choose first.
+    if (needsOptions(product)) {
+      setOptionsFor(product);
+      return;
+    }
+    setCart(prev => addLine(prev, product, 1));
+  };
+  const sub = (id: number) => setCart(prev => changeLineQty(prev, simpleKey(id), -1));
 
   const available = products.filter(p => p.available);
   const categories = ['All', ...Array.from(new Set(available.map(p => p.category)))];
@@ -185,7 +219,7 @@ export default function TropicalBloomTemplate({ data }: { data: StorefrontData }
               The Menu
             </h2>
             <p className="text-sm" style={{ color: 'rgba(255,245,224,0.4)' }}>
-              {tc?.openingHours || store.openingHours} · {store.deliveryInfo}
+              {tc?.openingHours || store.openingHours}{store.deliveryInfo ? ` · ${store.deliveryInfo}` : ''}
             </p>
           </div>
 
@@ -217,8 +251,8 @@ export default function TropicalBloomTemplate({ data }: { data: StorefrontData }
             {filtered.map((product, i) => {
               const clr = CARD_COLORS[i % CARD_COLORS.length];
               const tilt = i % 2 === 0 ? '-2deg' : '2deg';
-              const qty = cart[product.id] ?? 0;
-              const display = (product.discountPrice ?? product.price).toFixed(2);
+              const qty = qtyOf(product.id);
+              const display = formatMoney(product.discountPrice ?? product.price, store.currencySuffix);
 
               return (
                 <div
@@ -254,9 +288,9 @@ export default function TropicalBloomTemplate({ data }: { data: StorefrontData }
 
                   <div className="flex items-center justify-between">
                     <div>
-                      <span className="text-base font-extrabold" style={{ color: clr.bg }}>${display}</span>
+                      <span className="text-base font-extrabold" style={{ color: clr.bg }}>{display}</span>
                       {product.discountPrice && (
-                        <span className="ml-1 text-xs line-through" style={{ color: '#aaa' }}>${product.price.toFixed(2)}</span>
+                        <span className="ml-1 text-xs line-through" style={{ color: '#aaa' }}>{formatMoney(product.price, store.currencySuffix)}</span>
                       )}
                     </div>
                     {qty === 0 ? (
@@ -298,14 +332,36 @@ export default function TropicalBloomTemplate({ data }: { data: StorefrontData }
                 </span>
               </div>
               <button
+                onClick={() => setCartOpen(true)}
                 className="px-8 py-2.5 rounded-full text-sm font-extrabold tracking-wide uppercase cursor-pointer transition-all duration-200 hover:scale-105 active:scale-95"
                 style={{ background: '#FF6B35', color: '#fff', boxShadow: '0 4px 16px rgba(255,107,53,0.4)' }}
               >
-                Checkout — ${totalPrice.toFixed(2)} 🌺
+                Checkout — {formatMoney(totalPrice, store.currencySuffix)} 🌺
               </button>
             </div>
           </div>
         )}
+
+        <ProductOptionsDialog
+          product={optionsFor}
+          currencySuffix={store.currencySuffix}
+          accent="#FF6B35"
+          onClose={() => setOptionsFor(null)}
+          onConfirm={(selection, qty) => {
+            if (optionsFor) setCart(prev => addLine(prev, optionsFor, qty, selection));
+            setOptionsFor(null);
+          }}
+        />
+        <CheckoutDrawer
+          open={cartOpen}
+          onClose={() => setCartOpen(false)}
+          storeSlug={store.slug}
+          cart={cart}
+          currencySuffix={store.currencySuffix}
+          onChangeQty={(key, delta) => setCart(prev => changeLineQty(prev, key, delta))}
+          onRemove={(key) => setCart(prev => removeLine(prev, key))}
+          onOrderPlaced={() => setCart([])}
+        />
       </div>
     </>
   );

@@ -1,4 +1,5 @@
 'use client';
+import { formatMoneyCompact } from '@/lib/utils';
 
 import { useState, useEffect, useRef } from 'react';
 import { Italiana, Montserrat } from 'next/font/google';
@@ -12,12 +13,6 @@ import {
 
 const italiana = Italiana({ subsets: ['latin'], weight: ['400'] });
 const montserrat = Montserrat({ subsets: ['latin'], weight: ['300', '400', '500', '600', '700'] });
-
-function formatPrice(p: number): string {
-  if (p >= 1_000_000) return `$${(p / 1_000_000).toFixed(1)}M`;
-  if (p >= 1_000) return `$${Math.round(p / 1_000)}K`;
-  return `$${p.toLocaleString()}`;
-}
 
 function parseSpecs(desc: string) {
   const parts = desc.split(' · ');
@@ -102,6 +97,7 @@ const WHY_FEATURES = [
 
 export default function RealEstateAgencyTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const formatPrice = (p: number) => formatMoneyCompact(p, store.currencyCode);
   const tc = data.templateContent;
   const [category, setCategory] = useState('All');
   const [navScrolled, setNavScrolled] = useState(false);
@@ -129,7 +125,9 @@ export default function RealEstateAgencyTemplate({ data }: { data: StorefrontDat
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const waBase = `https://wa.me/${(store.whatsappNumber ?? '').replace(/\D/g, '')}`;
+  const waDigits = (store.whatsappNumber ?? '').replace(/\D/g, '');
+  // No number, no WhatsApp CTAs: a bare wa.me link opens WhatsApp with no recipient.
+  const waBase = waDigits ? `https://wa.me/${waDigits}` : null;
   const categories = ['All', ...Array.from(new Set(products.map(p => p.category)))];
   const filtered = category === 'All' ? products : products.filter(p => p.category === category);
 
@@ -1014,9 +1012,11 @@ export default function RealEstateAgencyTemplate({ data }: { data: StorefrontDat
                 {label}
               </button>
             ))}
+            {waBase && (
             <button className="ra-nav-cta" onClick={() => window.open(waBase, '_blank')}>
               Get in Touch
             </button>
+            )}
           </div>
         </div>
       </nav>
@@ -1043,12 +1043,13 @@ export default function RealEstateAgencyTemplate({ data }: { data: StorefrontDat
             </button>
           </div>
         </div>
-        <div className="ra-scroll-cue" onClick={() => scrollTo('ra-stats')}>
+        <div className="ra-scroll-cue" onClick={() => scrollTo(data.demo ? 'ra-stats' : 'ra-properties')}>
           <ChevronDown size={28} />
         </div>
       </section>
 
       {/* ─── STATS ─── */}
+      {data.demo && (<>
       <div id="ra-stats" className="ra-stats-band" ref={statsRef}>
         <div className="ra-stats-inner">
           {[
@@ -1068,6 +1069,7 @@ export default function RealEstateAgencyTemplate({ data }: { data: StorefrontDat
           ))}
         </div>
       </div>
+      </>)}
 
       {/* ─── ABOUT ─── */}
       <section id="ra-about">
@@ -1085,7 +1087,7 @@ export default function RealEstateAgencyTemplate({ data }: { data: StorefrontDat
                 We don't just sell properties — we match people with places that shape their lives. Every client relationship is built on deep listening, transparent communication, and an intimate knowledge of the market.
               </p>
               <div className="ra-about-checks">
-                {['Market-leading expertise across all property types', 'Dedicated agent support from first call to final signature', 'Proven record: $2B+ in successful transactions'].map((item, i) => (
+                {['Market-leading expertise across all property types', 'Dedicated agent support from first call to final signature', 'Clear, honest advice at every step'].map((item, i) => (
                   <div key={i} className="ra-about-check">
                     <div className="ra-check-dot">
                       <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
@@ -1111,10 +1113,12 @@ export default function RealEstateAgencyTemplate({ data }: { data: StorefrontDat
                 src="https://images.unsplash.com/photo-1600210492486-724fe5c67fb3?auto=format&fit=crop&w=600&q=80"
                 alt="Luxury property interior"
               />
+              {data.demo && (
               <div className="ra-about-badge">
                 <div className={`ra-about-badge-n ${italiana.className}`}>25+</div>
                 <div className="ra-about-badge-l">Years in<br />Business</div>
               </div>
+              )}
             </div>
           </div>
         </div>
@@ -1142,6 +1146,7 @@ export default function RealEstateAgencyTemplate({ data }: { data: StorefrontDat
       </div>
 
       {/* ─── AGENTS ─── */}
+      {data.demo && (<>
       <section id="ra-agents">
         <div className="ra-section" ref={agentsRef}>
           <div style={fade(agentsVisible)}>
@@ -1170,6 +1175,7 @@ export default function RealEstateAgencyTemplate({ data }: { data: StorefrontDat
                       <div className="ra-agent-stat-l">Years Exp.</div>
                     </div>
                   </div>
+                  {waBase && (
                   <a
                     className="ra-agent-wa"
                     href={`${waBase}?text=${encodeURIComponent(`Hello, I'd like to speak with ${agent.name} at ${store.shopName}.`)}`}
@@ -1178,12 +1184,14 @@ export default function RealEstateAgencyTemplate({ data }: { data: StorefrontDat
                   >
                     Contact Agent <ChevronRight size={12} />
                   </a>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         </div>
       </section>
+      </>)}
 
       {/* ─── PROPERTIES ─── */}
       <div id="ra-properties" className="ra-props-band" ref={propsRef}>
@@ -1227,6 +1235,7 @@ export default function RealEstateAgencyTemplate({ data }: { data: StorefrontDat
                         </span>
                       ))}
                     </div>
+                    {waBase && (
                     <a
                       className="ra-prop-cta"
                       href={`${waBase}?text=${encodeURIComponent(msg)}`}
@@ -1235,6 +1244,7 @@ export default function RealEstateAgencyTemplate({ data }: { data: StorefrontDat
                     >
                       Enquire via WhatsApp
                     </a>
+                    )}
                   </div>
                 </div>
               );
@@ -1278,6 +1288,7 @@ export default function RealEstateAgencyTemplate({ data }: { data: StorefrontDat
           <p className="ra-contact-sub">
             Whether you&rsquo;re buying, selling, or simply exploring — our team is ready to guide you. Reach out today for a no-obligation consultation.
           </p>
+          {waBase && (
           <a
             className="ra-contact-wa"
             href={waBase}
@@ -1289,6 +1300,7 @@ export default function RealEstateAgencyTemplate({ data }: { data: StorefrontDat
             </svg>
             Message Us on WhatsApp
           </a>
+          )}
           <div className="ra-contact-details">
             {(tc?.openingHours || store.openingHours) && (
               <div className="ra-contact-detail">

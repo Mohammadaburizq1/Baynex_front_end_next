@@ -141,7 +141,7 @@ function CustomerRegisterForm() {
                   Create an account
                 </h1>
                 <p className="mt-1.5 text-sm text-center leading-[1.45]" style={{ color: '#475569' }}>
-                  Optional — track your orders, save payment methods, and earn loyalty points.
+                  Optional — view your order history and manage your profile.
                 </p>
               </div>
 

@@ -1,20 +1,21 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import type { StorefrontData, PublicProduct } from '@/lib/types/store';
 import { Zap, ShoppingCart } from 'lucide-react';
 import { Orbitron } from 'next/font/google';
 import { Space_Grotesk } from 'next/font/google';
+import CheckoutDrawer from '@/components/storefront/restaurant-default/CheckoutDrawer';
+import { ProductOptionsDialog } from '@/components/storefront/shared/ProductOptionsDialog';
+import { readCartDraft, clearCartDraft } from '@/lib/utils/cart-draft';
+import {
+  addLine, cartCount as countOf, cartSubtotal, changeQty as changeLineQty, needsOptions, removeLine, restoreFromDraft,
+  type CartLine,
+} from '@/lib/utils/cart-lines';
 
 const orbitron = Orbitron({ subsets: ['latin'], weight: ['400', '700', '800'], display: 'swap' });
 const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], weight: ['400', '500', '700'], display: 'swap' });
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface CartItem {
-  product: PublicProduct;
-  qty: number;
-}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -39,7 +40,7 @@ function ProductCard({
 }) {
   const neonColor = idx % 2 === 0 ? CYAN : MAGENTA;
   const imgHeight = idx % 2 === 0 ? 120 : 168;
-  const displayPrice = (product.discountPrice ?? product.price).toFixed(2);
+  const displayPrice = formatMoney(product.discountPrice ?? product.price, currencySuffix);
 
   return (
     <div
@@ -94,7 +95,7 @@ function ProductCard({
         className={`font-bold text-[13px] mt-1 ${orbitron.className}`}
         style={{ color: neonColor }}
       >
-        {displayPrice} {currencySuffix}
+        {displayPrice}
       </p>
 
       {/* Add button */}
@@ -119,26 +120,37 @@ export default function CyberBrewTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
   const tc = data.templateContent;
 
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [cartOpen, setCartOpen] = useState(false);
+  // The product whose variant / add-on choices are being made (null = dialog closed).
+  const [optionsFor, setOptionsFor] = useState<PublicProduct | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
 
-  const cartCount = cart.reduce((s, i) => s + i.qty, 0);
-  const cartTotal = cart.reduce(
-    (s, i) => s + (i.product.discountPrice ?? i.product.price) * i.qty,
-    0
-  );
+  // Restore a cart saved before a guest was redirected to /customer/login (see CheckoutDrawer).
+  useEffect(() => {
+    const draft = readCartDraft(store.slug);
+    if (!draft || draft.length === 0) return;
+    const restored = restoreFromDraft(draft, products);
+    if (restored.length > 0) {
+      setCart(restored);
+      setCartOpen(true);
+    }
+    clearCartDraft(store.slug);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.slug]);
+
+  const cartCount = countOf(cart);
+  const cartTotal = cartSubtotal(cart);
 
   function addToCart(productId: number) {
     const product = products.find((p) => p.id === productId);
     if (!product) return;
-    setCart((prev) => {
-      const existing = prev.find((i) => i.product.id === productId);
-      if (existing)
-        return prev.map((i) =>
-          i.product.id === productId ? { ...i, qty: i.qty + 1 } : i
-        );
-      return [...prev, { product, qty: 1 }];
-    });
+    // A product with variants or add-ons needs the customer to choose first.
+    if (needsOptions(product)) {
+      setOptionsFor(product);
+      return;
+    }
+    setCart((prev) => addLine(prev, product, 1));
   }
 
   // Grouped categories
@@ -205,6 +217,7 @@ export default function CyberBrewTemplate({ data }: { data: StorefrontData }) {
 
         {/* Cart button */}
         <button
+          onClick={() => setCartOpen(true)}
           className="relative flex items-center justify-center w-10 h-10 flex-shrink-0 cursor-pointer"
           aria-label={`Cart, ${cartCount} items`}
         >
@@ -351,9 +364,10 @@ export default function CyberBrewTemplate({ data }: { data: StorefrontData }) {
             style={{ color: TEXT }}
           >
             {cartCount} power-up{cartCount !== 1 ? 's' : ''} queued&nbsp;&middot;&nbsp;
-            {cartTotal.toFixed(2)} {store.currencySuffix}
+            {formatMoney(cartTotal, store.currencySuffix)}
           </p>
           <button
+            onClick={() => setCartOpen(true)}
             className={`rounded-2xl px-5 py-2.5 font-bold text-sm cursor-pointer ${spaceGrotesk.className}`}
             style={{
               background: MAGENTA,
@@ -366,6 +380,27 @@ export default function CyberBrewTemplate({ data }: { data: StorefrontData }) {
           </button>
         </div>
       )}
+
+      <ProductOptionsDialog
+        product={optionsFor}
+        currencySuffix={store.currencySuffix}
+        accent={CYAN}
+        onClose={() => setOptionsFor(null)}
+        onConfirm={(selection, qty) => {
+          if (optionsFor) setCart((prev) => addLine(prev, optionsFor, qty, selection));
+          setOptionsFor(null);
+        }}
+      />
+      <CheckoutDrawer
+        open={cartOpen}
+        onClose={() => setCartOpen(false)}
+        storeSlug={store.slug}
+        cart={cart}
+        currencySuffix={store.currencySuffix}
+        onChangeQty={(key, delta) => setCart((prev) => changeLineQty(prev, key, delta))}
+        onRemove={(key) => setCart((prev) => removeLine(prev, key))}
+        onOrderPlaced={() => setCart([])}
+      />
     </div>
   );
 }

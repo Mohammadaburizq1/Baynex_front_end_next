@@ -51,10 +51,11 @@ function mapApiStore(
     phone: s.phone ?? s.whatsappNumber ?? '',
     email: s.email ?? local?.email ?? '',
     address: s.address ?? local?.address ?? '',
-    currency: local?.currency ?? 'MYR',
-    timezone: local?.timezone ?? 'Asia/Kuala_Lumpur',
+    currency: s.currency ?? 'JOD',
+    timezone: s.timezone ?? 'UTC',
+    locale: s.locale ?? 'en',
     status: (s.status?.toLowerCase() ?? 'active') as Store['status'],
-    acceptingOrders: local?.acceptingOrders ?? true,
+    acceptingOrders: s.acceptingOrders ?? true,
     theme: s.templateKey ?? local?.theme ?? 'retail-classic',
     logo: s.logoUrl,
     coverImage: s.coverImageUrl ?? local?.coverImage,
@@ -90,6 +91,9 @@ async function tryCreateInBackend(savedLocal: Partial<Store>, slug: string) {
     address: savedLocal.address || undefined,
     templateKey: savedLocal.theme || undefined,
     logoUrl: savedLocal.logo || undefined,
+    currency: savedLocal.currency || undefined,
+    timezone: savedLocal.timezone || undefined,
+    locale: savedLocal.locale || undefined,
   });
 }
 

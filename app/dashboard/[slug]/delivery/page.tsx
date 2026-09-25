@@ -328,14 +328,14 @@ export default function DeliveryPage() {
                             <ShoppingBag size={13} className="text-slate-400 shrink-0" />
                             <div>
                               <p className="text-[10px] text-slate-400 leading-none mb-0.5">Min Order</p>
-                              <p className="text-xs font-medium text-slate-700">{formatCurrency(zone.minOrder)}</p>
+                              <p className="text-xs font-medium text-slate-700">{formatCurrency(zone.minOrder, store.currency)}</p>
                             </div>
                           </div>
                           <div className="flex items-center gap-1.5">
                             <Truck size={13} className="text-slate-400 shrink-0" />
                             <div>
                               <p className="text-[10px] text-slate-400 leading-none mb-0.5">Delivery Fee</p>
-                              <p className="text-xs font-medium text-slate-700">{formatCurrency(zone.deliveryFee)}</p>
+                              <p className="text-xs font-medium text-slate-700">{formatCurrency(zone.deliveryFee, store.currency)}</p>
                             </div>
                           </div>
                           <div className="flex items-center gap-1.5">

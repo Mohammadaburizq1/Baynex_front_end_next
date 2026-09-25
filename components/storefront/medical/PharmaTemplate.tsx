@@ -1,4 +1,5 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
 import { useState, useEffect, useRef } from 'react';
 import { Plus_Jakarta_Sans, Nunito_Sans } from 'next/font/google';
@@ -58,7 +59,7 @@ const PHARMACISTS = [
 
 const SERVICES = [
   { Icon: Pill, title: 'Prescription Dispensing', desc: 'Fast and accurate dispensing with pharmacist review and patient counselling.' },
-  { Icon: Truck, title: 'Home Delivery', desc: 'Same-day and next-day delivery of medicines and supplements to your door.' },
+  { Icon: Truck, title: 'Collection or Delivery', desc: 'Arranged directly with you on WhatsApp for each order.' },
   { Icon: HeartPulse, title: 'Health Screening', desc: 'Blood pressure, glucose, and cholesterol checks — walk in, no appointment needed.' },
   { Icon: FlaskConical, title: 'Compounding Services', desc: 'Custom medication formulations prepared by our licensed compounding pharmacists.' },
 ];
@@ -112,7 +113,9 @@ export default function PharmaTemplate({ data }: { data: StorefrontData }) {
   }, []);
 
   const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
-  const waBase = `https://wa.me/${(store.whatsappNumber ?? '').replace(/\D/g, '')}`;
+  const waDigits = (store.whatsappNumber ?? '').replace(/\D/g, '');
+  // No number, no WhatsApp CTAs: a bare wa.me link opens WhatsApp with no recipient.
+  const waBase = waDigits ? `https://wa.me/${waDigits}` : null;
   const categories = ['All', ...Array.from(new Set(products.map(p => p.category)))];
   const filtered = products.filter(p =>
     (category === 'All' || p.category === category) &&
@@ -516,10 +519,12 @@ export default function PharmaTemplate({ data }: { data: StorefrontData }) {
             </div>
           </div>
           <div className="ph-nav-links">
-            {[['Products','ph-products'],['Services','ph-services'],['Our Team','ph-team'],['Contact','ph-contact']].map(([l,id]) => (
+            {[['Products','ph-products'],['Services','ph-services'],...(data.demo ? [['Our Team','ph-team']] : []),['Contact','ph-contact']].map(([l,id]) => (
               <button key={id} className="ph-nav-link" onClick={() => scrollTo(id)}>{l}</button>
             ))}
-            <button className="ph-nav-cta" onClick={() => window.open(waBase,'_blank')}>Order Now</button>
+            {waBase && (
+            <button className="ph-nav-cta" onClick={() => window.open(waBase,'_blank')}>Order on WhatsApp</button>
+            )}
           </div>
         </div>
       </nav>
@@ -535,10 +540,10 @@ export default function PharmaTemplate({ data }: { data: StorefrontData }) {
           <div>
             <div className="ph-hero-pill"><BadgeCheck size={11} />Licensed & Regulated</div>
             <h1 className={`ph-hero-h1 ${jakarta.className}`}>
-              Your Health,<br />Delivered <span>Fast.</span>
+              Your Health,<br />Made <span>Simple.</span>
             </h1>
             <p className="ph-hero-desc">
-              {tc?.heroDescription || store.description || 'Premium medicines, supplements, and health products — dispensed by expert pharmacists and delivered to your door.'}
+              {tc?.heroDescription || store.description || 'Premium medicines, supplements, and health products — dispensed by expert pharmacists.'}
             </p>
             <div className="ph-search">
               <div className="ph-search-icon"><Search size={16} /></div>
@@ -553,7 +558,7 @@ export default function PharmaTemplate({ data }: { data: StorefrontData }) {
           </div>
           <div className="ph-hero-cards">
             {[
-              { Icon: Truck, title: 'Same-Day Delivery', desc: 'Order before 2pm for same-day dispatch to your door.' },
+              { Icon: Truck, title: 'Order on WhatsApp', desc: 'Tell us what you need and we will confirm availability with you.' },
               { Icon: Shield, title: 'Genuine Products', desc: 'Every product sourced directly from licensed manufacturers.' },
               { Icon: HeartPulse, title: 'Pharmacist Advice', desc: 'Free consultation with every prescription and OTC purchase.' },
             ].map(({ Icon, title, desc }, i) => (
@@ -570,6 +575,7 @@ export default function PharmaTemplate({ data }: { data: StorefrontData }) {
       </div>
 
       {/* ── STATS ── */}
+      {data.demo && (<>
       <div className="ph-stats" ref={statsRef}>
         <div className="ph-stats-inner">
           {[
@@ -585,6 +591,7 @@ export default function PharmaTemplate({ data }: { data: StorefrontData }) {
           ))}
         </div>
       </div>
+      </>)}
 
       {/* ── PRODUCTS ── */}
       <div id="ph-products">
@@ -614,12 +621,14 @@ export default function PharmaTemplate({ data }: { data: StorefrontData }) {
                     <p className="ph-prod-desc">{prod.description}</p>
                     <div className="ph-prod-footer">
                       <div>
-                        <span className="ph-prod-price">${prod.price}</span>
-                        {prod.discountPrice && <span className="ph-prod-orig">${prod.discountPrice + 10}</span>}
+                        <span className="ph-prod-price">{formatMoney(prod.discountPrice ?? prod.price, store.currencyCode)}</span>
+                        {prod.discountPrice != null && <span className="ph-prod-orig">{formatMoney(prod.price, store.currencyCode)}</span>}
                       </div>
+                      {waBase && (
                       <a className="ph-prod-wa" href={`${waBase}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noopener noreferrer">
-                        Order <ArrowRight size={12} />
+                        Order on WhatsApp <ArrowRight size={12} />
                       </a>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -685,6 +694,7 @@ export default function PharmaTemplate({ data }: { data: StorefrontData }) {
       </div>
 
       {/* ── TEAM ── */}
+      {data.demo && (<>
       <div id="ph-team" className="ph-team-band">
         <div className="ph-wrap" ref={teamRef}>
           <div style={up(teamVis)}>
@@ -700,17 +710,21 @@ export default function PharmaTemplate({ data }: { data: StorefrontData }) {
                   <div className={`ph-pharm-name ${jakarta.className}`}>{p.name}</div>
                   <div className="ph-pharm-title">{p.title}</div>
                   <div className="ph-pharm-line" />
+                  {waBase && (
                   <a className="ph-pharm-wa" href={`${waBase}?text=${encodeURIComponent(`Hi! I'd like to speak with ${p.name}.`)}`} target="_blank" rel="noopener noreferrer">
                     Ask a Question <ArrowRight size={12} />
                   </a>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         </div>
       </div>
+      </>)}
 
       {/* ── TESTIMONIALS ── */}
+      {data.demo && (<>
       <div className="ph-test-band" ref={testRef}>
         <div className="ph-test-inner">
           <div style={{ ...up(testVis), textAlign: 'center' }}>
@@ -728,6 +742,7 @@ export default function PharmaTemplate({ data }: { data: StorefrontData }) {
           </div>
         </div>
       </div>
+      </>)}
 
       {/* ── CTA ── */}
       <div id="ph-contact" className="ph-cta-band" ref={ctaRef}>
@@ -740,10 +755,12 @@ export default function PharmaTemplate({ data }: { data: StorefrontData }) {
             <p className="ph-cta-sub">Message us on WhatsApp. We'll confirm your order and arrange delivery or pickup — quickly and professionally.</p>
           </div>
           <div className="ph-cta-right" style={right(ctaVis, 100)}>
+            {waBase && (
             <a className="ph-cta-wa" href={waBase} target="_blank" rel="noopener noreferrer">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
               Order via WhatsApp
             </a>
+            )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
               {(tc?.openingHours || store.openingHours) && <div className="ph-cta-detail"><Clock size={13} />{tc?.openingHours || store.openingHours}</div>}
               <div className="ph-cta-detail"><MapPin size={13} />Pharmacy Location</div>

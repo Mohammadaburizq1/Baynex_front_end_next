@@ -1,14 +1,20 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Libre_Baskerville, Source_Sans_3 } from 'next/font/google';
-import type { StorefrontData } from '@/lib/types/store';
-import { ShoppingBag, X, Minus, Plus } from 'lucide-react';
+import type { StorefrontData, PublicProduct } from '@/lib/types/store';
+import { ShoppingBag } from 'lucide-react';
+import CheckoutDrawer from '@/components/storefront/restaurant-default/CheckoutDrawer';
+import { ProductOptionsDialog } from '@/components/storefront/shared/ProductOptionsDialog';
+import { readCartDraft, clearCartDraft } from '@/lib/utils/cart-draft';
+import {
+  addLine, cartCount as countOf, cartSubtotal, changeQty as changeLineQty, needsOptions, removeLine, restoreFromDraft,
+  type CartLine,
+} from '@/lib/utils/cart-lines';
 
 const baskerville = Libre_Baskerville({ subsets: ['latin'], weight: ['400', '700'], style: ['normal', 'italic'] });
 const sourceSans = Source_Sans_3({ subsets: ['latin'], weight: ['300', '400', '600', '700'] });
-
-type CartItem = { id: number; name: string; price: number; qty: number };
 
 const CATEGORIES = ['All', 'Entrées', 'Plats', 'Fromages', 'Desserts'];
 
@@ -23,31 +29,42 @@ const CANDLES = Array.from({ length: 12 }, (_, i) => ({
 
 export default function FrenchBrasserieTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  // Real stores filter by their own categories; the fixed list is showcase-only (it matched nothing real).
+  const categories = data.demo ? CATEGORIES : ['All', ...Array.from(new Set(products.map(p => p.category).filter(Boolean)))];
   const tc = data.templateContent;
   const [activeCategory, setActiveCategory] = useState('All');
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartLine[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
+  // The product whose variant / add-on choices are being made (null = dialog closed).
+  const [optionsFor, setOptionsFor] = useState<PublicProduct | null>(null);
+
+  // Restore a cart saved before a guest was redirected to /customer/login (see CheckoutDrawer).
+  useEffect(() => {
+    const draft = readCartDraft(store.slug);
+    if (!draft || draft.length === 0) return;
+    const restored = restoreFromDraft(draft, products);
+    if (restored.length > 0) {
+      setCart(restored);
+      setCartOpen(true);
+    }
+    clearCartDraft(store.slug);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.slug]);
 
   const filtered =
     activeCategory === 'All' ? products : products.filter((p) => p.category === activeCategory);
 
-  const addToCart = (p: (typeof products)[0]) => {
-    setCart((prev) => {
-      const exists = prev.find((c) => c.id === p.id);
-      if (exists) return prev.map((c) => (c.id === p.id ? { ...c, qty: c.qty + 1 } : c));
-      return [...prev, { id: p.id, name: p.name, price: p.discountPrice ?? p.price, qty: 1 }];
-    });
+  const addToCart = (p: PublicProduct) => {
+    // A product with variants or add-ons needs the customer to choose first.
+    if (needsOptions(p)) {
+      setOptionsFor(p);
+      return;
+    }
+    setCart((prev) => addLine(prev, p, 1));
   };
 
-  const changeQty = (id: number, delta: number) =>
-    setCart((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, qty: c.qty + delta } : c)).filter((c) => c.qty > 0)
-    );
-
-  const total = cart.reduce((sum, c) => sum + c.price * c.qty, 0);
-  const itemCount = cart.reduce((sum, c) => sum + c.qty, 0);
-  const waMsg = `Bonjour! I'd like to order: ${cart.map((c) => `${c.qty}x ${c.name}`).join(', ')}. Total: $${total.toFixed(2)}`;
-  const waHref = `https://wa.me/${(store.whatsappNumber ?? '').replace(/\D/g, '')}?text=${encodeURIComponent(waMsg)}`;
+  const total = cartSubtotal(cart);
+  const itemCount = countOf(cart);
 
   return (
     <>
@@ -212,7 +229,7 @@ export default function FrenchBrasserieTemplate({ data }: { data: StorefrontData
               <h2 className={baskerville.className} style={{ fontSize: 36, color: '#E8D8A8', fontStyle: 'italic' }}>Our Menu</h2>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {CATEGORIES.map((cat) => (
+              {categories.map((cat) => (
                 <button key={cat} className={`fb-tab${activeCategory === cat ? ' active' : ''} ${sourceSans.className}`} style={{ fontSize: 13, fontWeight: 600 }} onClick={() => setActiveCategory(cat)}>
                   {cat}
                 </button>
@@ -248,11 +265,11 @@ export default function FrenchBrasserieTemplate({ data }: { data: StorefrontData
                     <div>
                       {p.discountPrice ? (
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                          <span className={baskerville.className} style={{ fontSize: 22, fontWeight: 700, color: '#D4AF37' }}>${p.discountPrice.toFixed(2)}</span>
-                          <span className={sourceSans.className} style={{ fontSize: 13, color: '#3A5A3E', textDecoration: 'line-through' }}>${p.price.toFixed(2)}</span>
+                          <span className={baskerville.className} style={{ fontSize: 22, fontWeight: 700, color: '#D4AF37' }}>{formatMoney(p.discountPrice, store.currencySuffix)}</span>
+                          <span className={sourceSans.className} style={{ fontSize: 13, color: '#3A5A3E', textDecoration: 'line-through' }}>{formatMoney(p.price, store.currencySuffix)}</span>
                         </div>
                       ) : (
-                        <span className={baskerville.className} style={{ fontSize: 22, fontWeight: 700, color: '#D4AF37' }}>${p.price.toFixed(2)}</span>
+                        <span className={baskerville.className} style={{ fontSize: 22, fontWeight: 700, color: '#D4AF37' }}>{formatMoney(p.price, store.currencySuffix)}</span>
                       )}
                     </div>
                     <button className={`fb-add ${sourceSans.className}`} style={{ fontSize: 13 }} onClick={() => addToCart(p)}>AJOUTER</button>
@@ -263,59 +280,33 @@ export default function FrenchBrasserieTemplate({ data }: { data: StorefrontData
           </div>
         </section>
 
-        {/* Cart sidebar */}
-        {cartOpen && (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 100 }}>
-            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.74)' }} onClick={() => setCartOpen(false)} />
-            <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 380, background: '#111A14', borderLeft: '1px solid #2C4030', animation: 'cartSlide 0.28s ease', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ padding: '20px 24px', borderBottom: '1px solid #2C4030', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <h3 className={baskerville.className} style={{ fontSize: 22, color: '#E8D8A8', fontStyle: 'italic' }}>Votre Commande</h3>
-                  <p className={sourceSans.className} style={{ color: '#4A6A4E', fontSize: 12, letterSpacing: '0.06em' }}>YOUR ORDER</p>
-                </div>
-                <button onClick={() => setCartOpen(false)} style={{ background: 'none', border: 'none', color: '#4A6A4E', cursor: 'pointer' }}><X size={20} /></button>
-              </div>
-              <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
-                {cart.length === 0 ? (
-                  <p className={baskerville.className} style={{ color: '#3A5A3E', textAlign: 'center', marginTop: 48, lineHeight: 1.8, fontStyle: 'italic', fontSize: 17 }}>
-                    La table vous attend.<br />
-                    <span className={sourceSans.className} style={{ fontSize: 13, fontStyle: 'normal', color: '#3A5A3E' }}>Add something from the menu.</span>
-                  </p>
-                ) : cart.map((item) => (
-                  <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 0', borderBottom: '1px solid #1B3A2D' }}>
-                    <div style={{ flex: 1 }}>
-                      <p className={baskerville.className} style={{ color: '#E8D8A8', fontSize: 15, fontStyle: 'italic' }}>{item.name}</p>
-                      <p className={sourceSans.className} style={{ color: '#4A6A4E', fontSize: 13 }}>${(item.price * item.qty).toFixed(2)}</p>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <button onClick={() => changeQty(item.id, -1)} style={{ background: '#1B3A2D', border: '1px solid #2C4030', color: '#D4AF37', width: 26, height: 26, borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Minus size={12} /></button>
-                      <span className={sourceSans.className} style={{ color: '#E8D8A8', fontWeight: 700, fontSize: 14, minWidth: 16, textAlign: 'center' }}>{item.qty}</span>
-                      <button onClick={() => changeQty(item.id, 1)} style={{ background: '#1B3A2D', border: '1px solid #2C4030', color: '#D4AF37', width: 26, height: 26, borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={12} /></button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {cart.length > 0 && (
-                <div style={{ padding: '20px 24px', borderTop: '1px solid #2C4030' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 18 }}>
-                    <span className={sourceSans.className} style={{ color: '#4A6A4E', fontWeight: 700, letterSpacing: '0.08em', fontSize: 13 }}>TOTAL</span>
-                    <span className={baskerville.className} style={{ color: '#D4AF37', fontSize: 24, fontStyle: 'italic' }}>${total.toFixed(2)}</span>
-                  </div>
-                  <a href={waHref} target="_blank" rel="noopener noreferrer" style={{ display: 'block', background: '#D4AF37', color: '#111A14', borderRadius: 4, padding: '14px', textAlign: 'center', fontFamily: sourceSans.style.fontFamily, fontWeight: 700, fontSize: 15, letterSpacing: '0.1em', textDecoration: 'none', boxShadow: '0 8px 28px rgba(212,175,55,0.3)' }}>
-                    ORDER VIA WHATSAPP
-                  </a>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        <ProductOptionsDialog
+          product={optionsFor}
+          currencySuffix={store.currencySuffix}
+          accent="#D4AF37"
+          onClose={() => setOptionsFor(null)}
+          onConfirm={(selection, qty) => {
+            if (optionsFor) setCart((prev) => addLine(prev, optionsFor, qty, selection));
+            setOptionsFor(null);
+          }}
+        />
+        <CheckoutDrawer
+          open={cartOpen}
+          onClose={() => setCartOpen(false)}
+          storeSlug={store.slug}
+          cart={cart}
+          currencySuffix={store.currencySuffix}
+          onChangeQty={(key, delta) => setCart((prev) => changeLineQty(prev, key, delta))}
+          onRemove={(key) => setCart((prev) => removeLine(prev, key))}
+          onOrderPlaced={() => setCart([])}
+        />
 
         {/* Bottom bar */}
         {itemCount > 0 && !cartOpen && (
           <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 40, padding: '0 24px 20px' }}>
             <button onClick={() => setCartOpen(true)} className={sourceSans.className} style={{ width: '100%', maxWidth: 600, margin: '0 auto', display: 'flex', background: '#D4AF37', border: 'none', borderRadius: 6, padding: '15px 24px', cursor: 'pointer', alignItems: 'center', justifyContent: 'space-between', animation: 'goldPulse 2.5s ease infinite' }}>
               <span style={{ color: '#111A14', fontWeight: 700, fontSize: 14, letterSpacing: '0.06em' }}>{itemCount} ITEM{itemCount !== 1 ? 'S' : ''}</span>
-              <span style={{ color: '#111A14', fontWeight: 700, fontSize: 15, letterSpacing: '0.06em' }}>VIEW ORDER · ${total.toFixed(2)}</span>
+              <span style={{ color: '#111A14', fontWeight: 700, fontSize: 15, letterSpacing: '0.06em' }}>VIEW ORDER · {formatMoney(total, store.currencySuffix)}</span>
             </button>
           </div>
         )}

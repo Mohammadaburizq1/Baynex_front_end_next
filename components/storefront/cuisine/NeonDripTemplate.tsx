@@ -1,9 +1,22 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
 import { useState, useEffect } from 'react';
-import type { StorefrontData } from '@/lib/types/store';
+import type { StorefrontData, PublicProduct } from '@/lib/types/store';
 import { ShoppingCart, Plus, Minus } from 'lucide-react';
 import { Orbitron, Space_Grotesk } from 'next/font/google';
+import CheckoutDrawer from '@/components/storefront/restaurant-default/CheckoutDrawer';
+import { ProductOptionsDialog } from '@/components/storefront/shared/ProductOptionsDialog';
+import { readCartDraft, clearCartDraft } from '@/lib/utils/cart-draft';
+import {
+  addLine, cartCount as countOf, cartSubtotal, changeQty as changeLineQty, needsOptions, removeLine, restoreFromDraft,
+  type CartLine,
+} from '@/lib/utils/cart-lines';
+
+/** Key of the one (no variant, no add-ons) line a plain product gets — matches lineKey()'s format. */
+function simpleKey(productId: number): string {
+  return `${productId}||`;
+}
 
 const orbitron = Orbitron({ subsets: ['latin'], weight: ['400', '700', '900'], display: 'swap' });
 const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], weight: ['300', '400', '500', '600', '700'], display: 'swap' });
@@ -11,15 +24,32 @@ const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], weight: ['300', '400', 
 export default function NeonDripTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
   const tc = data.templateContent;
-  const [cart, setCart] = useState<Record<number, number>>({});
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [cartOpen, setCartOpen] = useState(false);
+  // The product whose variant / add-on choices are being made (null = dialog closed).
+  const [optionsFor, setOptionsFor] = useState<PublicProduct | null>(null);
   const [glitch, setGlitch] = useState(false);
   const [activeCategory, setActiveCategory] = useState('All');
 
-  const totalItems = Object.values(cart).reduce((a, b) => a + b, 0);
-  const totalPrice = Object.entries(cart).reduce((sum, [id, qty]) => {
-    const p = products.find(p => p.id === Number(id));
-    return sum + (p ? (p.discountPrice ?? p.price) * qty : 0);
-  }, 0);
+  // Restore a cart saved before a guest was redirected to /customer/login (see CheckoutDrawer).
+  useEffect(() => {
+    const draft = readCartDraft(store.slug);
+    if (!draft || draft.length === 0) return;
+    const restored = restoreFromDraft(draft, products);
+    if (restored.length > 0) {
+      setCart(restored);
+      setCartOpen(true);
+    }
+    clearCartDraft(store.slug);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.slug]);
+
+  const totalItems = countOf(cart);
+  const totalPrice = cartSubtotal(cart);
+
+  function qtyOf(productId: number): number {
+    return cart.filter(l => l.product.id === productId).reduce((s, l) => s + l.qty, 0);
+  }
 
   useEffect(() => {
     let t: ReturnType<typeof setTimeout>;
@@ -34,13 +64,17 @@ export default function NeonDripTemplate({ data }: { data: StorefrontData }) {
     return () => clearTimeout(t);
   }, []);
 
-  const add = (id: number) => setCart(c => ({ ...c, [id]: (c[id] ?? 0) + 1 }));
-  const sub = (id: number) => setCart(c => {
-    const next = { ...c };
-    if ((next[id] ?? 0) > 1) next[id]--;
-    else delete next[id];
-    return next;
-  });
+  const add = (id: number) => {
+    const product = products.find(p => p.id === id);
+    if (!product) return;
+    // A product with variants or add-ons needs the customer to choose first.
+    if (needsOptions(product)) {
+      setOptionsFor(product);
+      return;
+    }
+    setCart(prev => addLine(prev, product, 1));
+  };
+  const sub = (id: number) => setCart(prev => changeLineQty(prev, simpleKey(id), -1));
 
   const available = products.filter(p => p.available);
   const categories = ['All', ...Array.from(new Set(available.map(p => p.category)))];
@@ -231,7 +265,7 @@ export default function NeonDripTemplate({ data }: { data: StorefrontData }) {
               <span key={i} className="inline-flex items-center gap-4 px-8 text-[11px] font-semibold uppercase tracking-[0.22em]" style={{ color:'rgba(0,217,255,0.55)' }}>
                 <span style={{ color:'rgba(255,60,172,0.55)' }}>◈</span>
                 {p.name}
-                <span style={{ color:'rgba(255,60,172,0.65)' }}>${(p.discountPrice ?? p.price).toFixed(2)}</span>
+                <span style={{ color:'rgba(255,60,172,0.65)' }}>{formatMoney((p.discountPrice ?? p.price), store.currencySuffix)}</span>
               </span>
             ))}
           </div>
@@ -250,7 +284,7 @@ export default function NeonDripTemplate({ data }: { data: StorefrontData }) {
               <span className="np" style={{ color:'#FF3CAC' }}>HOT</span>
             </h2>
             <p className="mt-3 text-xs" style={{ color:'rgba(232,232,255,0.35)' }}>
-              {tc?.openingHours || store.openingHours} · {store.deliveryInfo}
+              {tc?.openingHours || store.openingHours}{store.deliveryInfo ? ` · ${store.deliveryInfo}` : ''}
             </p>
           </div>
 
@@ -281,8 +315,8 @@ export default function NeonDripTemplate({ data }: { data: StorefrontData }) {
               const isCyan = i % 2 === 0;
               const accent = isCyan ? '#00D9FF' : '#FF3CAC';
               const glowClass = isCyan ? 'card-c' : 'card-p';
-              const qty = cart[product.id] ?? 0;
-              const display = (product.discountPrice ?? product.price).toFixed(2);
+              const qty = qtyOf(product.id);
+              const display = formatMoney(product.discountPrice ?? product.price, store.currencySuffix);
 
               return (
                 <div
@@ -313,9 +347,9 @@ export default function NeonDripTemplate({ data }: { data: StorefrontData }) {
 
                   <div className="flex items-center justify-between">
                     <div>
-                      <span className="text-lg font-bold" style={{ color:accent }}>${display}</span>
+                      <span className="text-lg font-bold" style={{ color:accent }}>{display}</span>
                       {product.discountPrice && (
-                        <span className="ml-2 text-xs line-through" style={{ color:'rgba(232,232,255,0.28)' }}>${product.price.toFixed(2)}</span>
+                        <span className="ml-2 text-xs line-through" style={{ color:'rgba(232,232,255,0.28)' }}>{formatMoney(product.price, store.currencySuffix)}</span>
                       )}
                     </div>
                     {qty === 0 ? (
@@ -362,15 +396,36 @@ export default function NeonDripTemplate({ data }: { data: StorefrontData }) {
                 </span>
               </div>
               <button
+                onClick={() => setCartOpen(true)}
                 className="px-8 py-2.5 rounded-full text-sm font-bold tracking-wider uppercase cursor-pointer transition-opacity hover:opacity-90"
                 style={{ background:'linear-gradient(90deg, #00D9FF, #FF3CAC)', color:'#070710' }}
               >
-                Checkout — ${totalPrice.toFixed(2)}
+                Checkout — {formatMoney(totalPrice, store.currencySuffix)}
               </button>
             </div>
           </div>
         )}
 
+        <ProductOptionsDialog
+          product={optionsFor}
+          currencySuffix={store.currencySuffix}
+          accent="#00D9FF"
+          onClose={() => setOptionsFor(null)}
+          onConfirm={(selection, qty) => {
+            if (optionsFor) setCart(prev => addLine(prev, optionsFor, qty, selection));
+            setOptionsFor(null);
+          }}
+        />
+        <CheckoutDrawer
+          open={cartOpen}
+          onClose={() => setCartOpen(false)}
+          storeSlug={store.slug}
+          cart={cart}
+          currencySuffix={store.currencySuffix}
+          onChangeQty={(key, delta) => setCart(prev => changeLineQty(prev, key, delta))}
+          onRemove={(key) => setCart(prev => removeLine(prev, key))}
+          onOrderPlaced={() => setCart([])}
+        />
       </div>
     </>
   );

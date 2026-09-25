@@ -3,7 +3,7 @@ import { StoreProvider } from '@/contexts/StoreContext';
 import { ToastProvider } from '@/components/ui/Toast';
 import { DesktopSidebar, MobileSidebar } from '@/components/dashboard/Sidebar';
 
-export const metadata = { title: 'Dashboard — ShopLink' };
+export const metadata = { title: 'Dashboard — khanGates' };
 
 interface LayoutProps {
   children: ReactNode;

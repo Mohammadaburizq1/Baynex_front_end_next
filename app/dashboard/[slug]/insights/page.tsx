@@ -10,7 +10,7 @@ import { SectionAccessGate } from '@/components/dashboard/SectionAccessGate';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useStore } from '@/contexts/StoreContext';
-import { formatCurrency, formatDate, BUSINESS_TYPES_WITH_STOCK, LOW_STOCK_THRESHOLD } from '@/lib/utils';
+import { formatMoney, formatDate, BUSINESS_TYPES_WITH_STOCK, LOW_STOCK_THRESHOLD } from '@/lib/utils';
 import { type Period, PERIODS, periodToRange, previousPeriodRange } from '@/lib/utils/report-period';
 import type { ApiDailyStoreSales, ApiTopProduct } from '@/lib/api/analytics';
 import type { ApiCustomerSummary } from '@/lib/api/customers';
@@ -67,14 +67,14 @@ function buildInsights(params: {
       icon: change >= 0 ? TrendingUp : TrendingDown,
       tone: change >= 0 ? 'positive' : 'negative',
       headline: `Revenue is ${change >= 0 ? 'up' : 'down'} ${Math.abs(change).toFixed(1)}% vs the previous ${period.toLowerCase()}`,
-      detail: `${formatCurrency(currentRevenue, currency)} this period, vs ${formatCurrency(previousRevenue, currency)} before`,
+      detail: `${formatMoney(currentRevenue, null)} this period, vs ${formatMoney(previousRevenue, null)} before`,
     });
   } else if (currentRevenue > 0) {
     insights.push({
       key: 'revenue-trend',
       icon: Sparkles,
       tone: 'positive',
-      headline: `${formatCurrency(currentRevenue, currency)} in revenue this period`,
+      headline: `${formatMoney(currentRevenue, null)} in revenue this period`,
       detail: `No sales in the previous ${period.toLowerCase()} to compare against`,
     });
   }
@@ -99,7 +99,7 @@ function buildInsights(params: {
       icon: CalendarDays,
       tone: 'neutral',
       headline: `Your busiest day was ${formatDate(busiest.saleDate)}`,
-      detail: `${formatCurrency(busiest.totalRevenue, currency)} from ${busiest.orderCount} order${busiest.orderCount === 1 ? '' : 's'}`,
+      detail: `${formatMoney(busiest.totalRevenue, null)} from ${busiest.orderCount} order${busiest.orderCount === 1 ? '' : 's'}`,
     });
   }
 
@@ -111,7 +111,7 @@ function buildInsights(params: {
       icon: Trophy,
       tone: 'positive',
       headline: `${top.name} was your best-seller this period`,
-      detail: `${top.unitsSold} unit${top.unitsSold === 1 ? '' : 's'} sold, ${formatCurrency(top.revenue, currency)} in revenue`,
+      detail: `${top.unitsSold} unit${top.unitsSold === 1 ? '' : 's'} sold, ${formatMoney(top.revenue, null)} in revenue`,
     });
   }
 
@@ -169,7 +169,9 @@ function buildInsights(params: {
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function InsightsPage() {
-  const { store, businessType } = useStore();
+  const { store, businessType, storeNotSynced } = useStore();
+  // Keep showing the loader while StoreContext is still resolving the backend store (local- id).
+  const resolvingStore = store.id.startsWith('local-') && !storeNotSynced;
   const [activePeriod, setActivePeriod] = useState<Period>('7 Days');
   const [currentSales, setCurrentSales] = useState<ApiDailyStoreSales[]>([]);
   const [previousSales, setPreviousSales] = useState<ApiDailyStoreSales[]>([]);
@@ -177,6 +179,9 @@ export default function InsightsPage() {
   const [customers, setCustomers] = useState<ApiCustomerSummary[]>([]);
   const [products, setProducts] = useState<ApiProduct[]>([]);
   const [loading, setLoading] = useState(true);
+  // A failed load must not read as "Not enough data yet".
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const tracksStock = BUSINESS_TYPES_WITH_STOCK[businessType] ?? false;
   const { from, to } = useMemo(() => periodToRange(activePeriod), [activePeriod]);
@@ -189,6 +194,7 @@ export default function InsightsPage() {
         setLoading(false);
         return;
       }
+      setLoadError(null);
       setLoading(true);
       try {
         const [{ getDailyStoreSales, getTopProducts }, { getCustomerSummaries }, { getProducts }] = await Promise.all([
@@ -209,8 +215,9 @@ export default function InsightsPage() {
         setTopProducts(products_);
         setCustomers(custs);
         setProducts(prods);
-      } catch {
+      } catch (err) {
         if (!cancelled) {
+          setLoadError(err instanceof Error ? err.message : 'Something went wrong.');
           setCurrentSales([]);
           setPreviousSales([]);
           setTopProducts([]);
@@ -222,7 +229,7 @@ export default function InsightsPage() {
     }
     fetchAll();
     return () => { cancelled = true; };
-  }, [store.id, from, to, prevRange.from, prevRange.to, tracksStock]);
+  }, [store.id, from, to, prevRange.from, prevRange.to, tracksStock, reloadKey]);
 
   const insights = useMemo(
     () => buildInsights({
@@ -273,10 +280,19 @@ export default function InsightsPage() {
           })}
         </div>
 
-        {loading ? (
+        {loading || resolvingStore ? (
           <div className="flex items-center justify-center py-16">
             <div className="w-8 h-8 rounded-full border-2 border-primary-500 border-t-transparent animate-spin" />
           </div>
+        ) : loadError !== null ? (
+          <Card padding="none">
+            <EmptyState
+              icon={<AlertTriangle size={28} />}
+              title="Couldn't load insights"
+              description={loadError}
+              action={{ label: 'Try again', onClick: () => setReloadKey(k => k + 1) }}
+            />
+          </Card>
         ) : insights.length === 0 ? (
           <Card padding="none">
             <EmptyState

@@ -15,6 +15,7 @@ import { dashboardPath } from '@/lib/utils/dashboard-path';
 import { isDemoStore } from '@/lib/utils/store-scoped-data';
 import {
   formatCurrency,
+  formatMoney,
   formatRelativeTime,
   ORDER_STATUS_MAP,
   BUSINESS_TYPES_WITH_STOCK,
@@ -165,7 +166,6 @@ export default function DashboardPage() {
         .slice(0, 5),
     [orders],
   );
-  const currency = store.currency || 'MYR';
 
   // Real stock data now (added alongside the Inventory ticket) — only meaningful for verticals
   // that track it at all; a real-estate/services store's products always read stock 0 (never
@@ -271,7 +271,7 @@ export default function DashboardPage() {
                   : 'Your Shop Link'}
             </p>
             <p className="text-sm font-mono font-semibold truncate" style={{ color: isDemo ? '#B45309' : isDraft ? '#64748B' : '#4338CA' }}>
-              {typeof window !== 'undefined' ? window.location.host : 'shoplink.co'}{shopHref}
+              {typeof window !== 'undefined' ? window.location.host : 'khanGates.app'}{shopHref}
             </p>
             {isDraft && (
               <p className="text-xs text-slate-500 mt-1">
@@ -358,7 +358,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
           <StatCard
             title="Total Revenue"
-            value={formatCurrency(stats.totalRevenue, currency)}
+            value={formatMoney(stats.totalRevenue, null)}
             change={isDemo ? 12.4 : 0}
             icon="revenue"
             color="indigo"
@@ -374,7 +374,7 @@ export default function DashboardPage() {
           />
           <StatCard
             title="Avg Order Value"
-            value={formatCurrency(stats.avgOrderValue, currency)}
+            value={formatMoney(stats.avgOrderValue, null)}
             change={isDemo ? 3.4 : 0}
             icon="revenue"
             color="amber"
@@ -467,7 +467,7 @@ export default function DashboardPage() {
                             {order.customerName}
                           </td>
                           <td className="px-5 py-3 text-right font-medium text-slate-900 tabular-nums">
-                            {formatCurrency(order.total)}
+                            {formatMoney(order.total, order.currency)}
                           </td>
                           <td className="px-5 py-3">
                             <StatusBadge

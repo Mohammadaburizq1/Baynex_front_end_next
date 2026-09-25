@@ -1,14 +1,20 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Josefin_Sans, Poppins } from 'next/font/google';
-import type { StorefrontData } from '@/lib/types/store';
-import { ShoppingBag, X, Minus, Plus, Zap } from 'lucide-react';
+import type { StorefrontData, PublicProduct } from '@/lib/types/store';
+import { ShoppingBag, Zap } from 'lucide-react';
+import CheckoutDrawer from '@/components/storefront/restaurant-default/CheckoutDrawer';
+import { ProductOptionsDialog } from '@/components/storefront/shared/ProductOptionsDialog';
+import { readCartDraft, clearCartDraft } from '@/lib/utils/cart-draft';
+import {
+  addLine, cartCount as countOf, cartSubtotal, changeQty as changeLineQty, needsOptions, removeLine, restoreFromDraft,
+  type CartLine,
+} from '@/lib/utils/cart-lines';
 
 const josefin = Josefin_Sans({ subsets: ['latin'], weight: ['300', '400', '600', '700'] });
 const poppins = Poppins({ subsets: ['latin'], weight: ['300', '400', '500', '600', '700'] });
-
-type CartItem = { id: number; name: string; price: number; qty: number };
 
 const CATEGORIES = ['All', 'Bowls', 'Smoothies', 'Shots', 'Bites'];
 
@@ -30,31 +36,42 @@ const CARD_PALETTES = [
 
 export default function SmoothieBarTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  // Real stores filter by their own categories; the fixed list is showcase-only (it matched nothing real).
+  const categories = data.demo ? CATEGORIES : ['All', ...Array.from(new Set(products.map(p => p.category).filter(Boolean)))];
   const tc = data.templateContent;
   const [activeCategory, setActiveCategory] = useState('All');
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartLine[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
+  // The product whose variant / add-on choices are being made (null = dialog closed).
+  const [optionsFor, setOptionsFor] = useState<PublicProduct | null>(null);
+
+  // Restore a cart saved before a guest was redirected to /customer/login (see CheckoutDrawer).
+  useEffect(() => {
+    const draft = readCartDraft(store.slug);
+    if (!draft || draft.length === 0) return;
+    const restored = restoreFromDraft(draft, products);
+    if (restored.length > 0) {
+      setCart(restored);
+      setCartOpen(true);
+    }
+    clearCartDraft(store.slug);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.slug]);
 
   const filtered =
     activeCategory === 'All' ? products : products.filter((p) => p.category === activeCategory);
 
-  const addToCart = (p: (typeof products)[0]) => {
-    setCart((prev) => {
-      const exists = prev.find((c) => c.id === p.id);
-      if (exists) return prev.map((c) => (c.id === p.id ? { ...c, qty: c.qty + 1 } : c));
-      return [...prev, { id: p.id, name: p.name, price: p.discountPrice ?? p.price, qty: 1 }];
-    });
+  const addToCart = (p: PublicProduct) => {
+    // A product with variants or add-ons needs the customer to choose first.
+    if (needsOptions(p)) {
+      setOptionsFor(p);
+      return;
+    }
+    setCart((prev) => addLine(prev, p, 1));
   };
 
-  const changeQty = (id: number, delta: number) =>
-    setCart((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, qty: c.qty + delta } : c)).filter((c) => c.qty > 0)
-    );
-
-  const total = cart.reduce((sum, c) => sum + c.price * c.qty, 0);
-  const itemCount = cart.reduce((sum, c) => sum + c.qty, 0);
-  const waMsg = `Hi! I'd like to order: ${cart.map((c) => `${c.qty}x ${c.name}`).join(', ')}. Total: $${total.toFixed(2)}`;
-  const waHref = `https://wa.me/${(store.whatsappNumber ?? '').replace(/\D/g, '')}?text=${encodeURIComponent(waMsg)}`;
+  const total = cartSubtotal(cart);
+  const itemCount = countOf(cart);
 
   return (
     <>
@@ -203,7 +220,7 @@ export default function SmoothieBarTemplate({ data }: { data: StorefrontData }) 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center', justifyContent: 'space-between', marginBottom: 36 }}>
               <h2 className={josefin.className} style={{ fontSize: 36, color: '#1A2E0A', fontWeight: 700, letterSpacing: '0.02em' }}>THE MENU</h2>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {CATEGORIES.map((cat) => (
+                {categories.map((cat) => (
                   <button key={cat} className={`sb-tab${activeCategory === cat ? ' active' : ''} ${josefin.className}`} style={{ fontSize: 14, fontWeight: 700, letterSpacing: '0.04em' }} onClick={() => setActiveCategory(cat)}>
                     {cat.toUpperCase()}
                   </button>
@@ -235,11 +252,11 @@ export default function SmoothieBarTemplate({ data }: { data: StorefrontData }) 
                         <div>
                           {p.discountPrice ? (
                             <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                              <span className={josefin.className} style={{ fontSize: 22, fontWeight: 700, color: top }}>${p.discountPrice.toFixed(2)}</span>
-                              <span className={poppins.className} style={{ fontSize: 13, color: '#A7C4A0', textDecoration: 'line-through' }}>${p.price.toFixed(2)}</span>
+                              <span className={josefin.className} style={{ fontSize: 22, fontWeight: 700, color: top }}>{formatMoney(p.discountPrice, store.currencySuffix)}</span>
+                              <span className={poppins.className} style={{ fontSize: 13, color: '#A7C4A0', textDecoration: 'line-through' }}>{formatMoney(p.price, store.currencySuffix)}</span>
                             </div>
                           ) : (
-                            <span className={josefin.className} style={{ fontSize: 22, fontWeight: 700, color: top }}>${p.price.toFixed(2)}</span>
+                            <span className={josefin.className} style={{ fontSize: 22, fontWeight: 700, color: top }}>{formatMoney(p.price, store.currencySuffix)}</span>
                           )}
                         </div>
                         <button className={`sb-add ${poppins.className}`} style={{ fontSize: 14, background: top }} onClick={() => addToCart(p)}>Add +</button>
@@ -252,46 +269,26 @@ export default function SmoothieBarTemplate({ data }: { data: StorefrontData }) 
           </div>
         </section>
 
-        {/* Cart sidebar */}
-        {cartOpen && (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 100 }}>
-            <div style={{ position: 'absolute', inset: 0, background: 'rgba(26,46,10,0.35)' }} onClick={() => setCartOpen(false)} />
-            <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 360, background: '#FAFFFE', borderLeft: '1px solid #DCFCE7', animation: 'cartIn 0.28s ease', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ padding: '20px 24px', borderBottom: '1px solid #DCFCE7', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <h3 className={josefin.className} style={{ fontSize: 24, color: '#1A2E0A', fontWeight: 700 }}>YOUR ORDER</h3>
-                <button onClick={() => setCartOpen(false)} style={{ background: 'none', border: 'none', color: '#52744A', cursor: 'pointer' }}><X size={20} /></button>
-              </div>
-              <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
-                {cart.length === 0 ? (
-                  <p className={poppins.className} style={{ color: '#A7C4A0', textAlign: 'center', marginTop: 48, lineHeight: 1.8 }}>Nothing here yet!<br />Add something from the menu.</p>
-                ) : cart.map((item) => (
-                  <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #DCFCE7' }}>
-                    <div style={{ flex: 1 }}>
-                      <p className={poppins.className} style={{ color: '#1A2E0A', fontWeight: 600, fontSize: 14 }}>{item.name}</p>
-                      <p className={poppins.className} style={{ color: '#52744A', fontSize: 13 }}>${(item.price * item.qty).toFixed(2)}</p>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <button onClick={() => changeQty(item.id, -1)} style={{ background: '#DCFCE7', border: 'none', color: '#22C55E', width: 26, height: 26, borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Minus size={12} /></button>
-                      <span className={poppins.className} style={{ color: '#1A2E0A', fontWeight: 700, fontSize: 14, minWidth: 16, textAlign: 'center' }}>{item.qty}</span>
-                      <button onClick={() => changeQty(item.id, 1)} style={{ background: '#DCFCE7', border: 'none', color: '#22C55E', width: 26, height: 26, borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={12} /></button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {cart.length > 0 && (
-                <div style={{ padding: '20px 24px', borderTop: '1px solid #DCFCE7' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                    <span className={poppins.className} style={{ color: '#52744A', fontWeight: 700 }}>Total</span>
-                    <span className={josefin.className} style={{ color: '#22C55E', fontSize: 22, fontWeight: 700 }}>${total.toFixed(2)}</span>
-                  </div>
-                  <a href={waHref} target="_blank" rel="noopener noreferrer" style={{ display: 'block', background: 'linear-gradient(135deg, #22C55E, #06B6D4)', color: 'white', borderRadius: 100, padding: '14px', textAlign: 'center', fontFamily: josefin.style.fontFamily, fontWeight: 700, fontSize: 15, letterSpacing: '0.06em', textDecoration: 'none', boxShadow: '0 8px 24px rgba(34,197,94,0.3)' }}>
-                    ORDER VIA WHATSAPP
-                  </a>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        <ProductOptionsDialog
+          product={optionsFor}
+          currencySuffix={store.currencySuffix}
+          accent="#22C55E"
+          onClose={() => setOptionsFor(null)}
+          onConfirm={(selection, qty) => {
+            if (optionsFor) setCart((prev) => addLine(prev, optionsFor, qty, selection));
+            setOptionsFor(null);
+          }}
+        />
+        <CheckoutDrawer
+          open={cartOpen}
+          onClose={() => setCartOpen(false)}
+          storeSlug={store.slug}
+          cart={cart}
+          currencySuffix={store.currencySuffix}
+          onChangeQty={(key, delta) => setCart((prev) => changeLineQty(prev, key, delta))}
+          onRemove={(key) => setCart((prev) => removeLine(prev, key))}
+          onOrderPlaced={() => setCart([])}
+        />
 
         {/* Bottom cart bar */}
         {itemCount > 0 && !cartOpen && (
@@ -299,7 +296,7 @@ export default function SmoothieBarTemplate({ data }: { data: StorefrontData }) 
             <div style={{ maxWidth: 600, margin: '0 auto' }}>
               <button onClick={() => setCartOpen(true)} className={josefin.className} style={{ width: '100%', background: 'linear-gradient(135deg, #22C55E, #06B6D4)', border: 'none', borderRadius: 100, padding: '15px 24px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 8px 32px rgba(34,197,94,0.42)', letterSpacing: '0.04em' }}>
                 <span style={{ color: 'white', fontWeight: 700, fontSize: 14 }}>{itemCount} ITEM{itemCount !== 1 ? 'S' : ''}</span>
-                <span style={{ color: 'white', fontWeight: 700, fontSize: 15 }}>VIEW ORDER · ${total.toFixed(2)}</span>
+                <span style={{ color: 'white', fontWeight: 700, fontSize: 15 }}>VIEW ORDER · {formatMoney(total, store.currencySuffix)}</span>
               </button>
             </div>
           </div>

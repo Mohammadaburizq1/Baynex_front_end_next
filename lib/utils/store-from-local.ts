@@ -12,8 +12,9 @@ const DEFAULTS: Store = {
   phone: '',
   email: '',
   address: '',
-  currency: 'MYR',
-  timezone: 'Asia/Kuala_Lumpur',
+  currency: 'JOD',
+  timezone: 'UTC',
+  locale: 'en',
   // Matches the backend default (StoreService.create() always starts DRAFT) for the moment
   // before real data (localStorage or a backend fetch) is known.
   status: 'draft',

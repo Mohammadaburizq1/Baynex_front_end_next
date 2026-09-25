@@ -29,14 +29,14 @@ interface PageProps {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { id } = await params;
-  return { title: `Template Preview: ${id} — ShopLink` };
+  return { title: `Template Preview: ${id} — khanGates` };
 }
 
 export default async function TemplatePreviewPage({ params }: PageProps) {
   const { id } = await params;
   if (!VALID_IDS.has(id)) notFound();
 
-  const data = getMockStore(id);
+  const data = { ...getMockStore(id), demo: true };
 
   return (
     <Suspense fallback={null}>

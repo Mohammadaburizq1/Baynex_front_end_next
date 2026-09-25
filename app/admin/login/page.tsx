@@ -170,7 +170,7 @@ export default function AdminLoginPage() {
                         type="email"
                         value={email}
                         onChange={e => setEmail(e.target.value)}
-                        placeholder="admin@shoplink.app"
+                        placeholder="admin@khanGates.app"
                         disabled={loading}
                         autoComplete="username"
                         autoFocus

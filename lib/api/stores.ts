@@ -24,6 +24,10 @@ export interface ApiStore {
   freeDeliveryThreshold?: number;
   defaultEstimatedTime?: string;
   pickupAvailable?: boolean;
+  currency?: string;
+  timezone?: string;
+  locale?: string;
+  acceptingOrders?: boolean;
 }
 
 // Fields sent when creating/updating a store (matches backend StoreRequest DTO)
@@ -47,6 +51,9 @@ export interface StorePayload {
   freeDeliveryThreshold?: number;
   defaultEstimatedTime?: string;
   pickupAvailable?: boolean;
+  currency?: string;
+  timezone?: string;
+  locale?: string;
   // Matches backend StoreStatus enum casing (DRAFT / ACTIVE / SUSPENDED).
   status?: 'DRAFT' | 'ACTIVE' | 'SUSPENDED';
 }
@@ -67,6 +74,13 @@ export async function updateStore(id: string, data: Partial<StorePayload>): Prom
   return apiRequest<ApiStore>(`/api/dashboard/stores/${id}`, {
     method: 'PUT',
     body: JSON.stringify(data),
+  });
+}
+
+export async function updateAcceptingOrders(id: string, acceptingOrders: boolean): Promise<ApiStore> {
+  return apiRequest<ApiStore>(`/api/dashboard/stores/${id}/accepting-orders`, {
+    method: 'PUT',
+    body: JSON.stringify({ acceptingOrders }),
   });
 }
 

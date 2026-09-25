@@ -1,18 +1,19 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import type { StorefrontData, PublicProduct } from '@/lib/types/store';
-import { ChevronUp, X } from 'lucide-react';
+import { ChevronUp } from 'lucide-react';
 import { Noto_Serif } from 'next/font/google';
+import CheckoutDrawer from '@/components/storefront/restaurant-default/CheckoutDrawer';
+import { ProductOptionsDialog } from '@/components/storefront/shared/ProductOptionsDialog';
+import { readCartDraft, clearCartDraft } from '@/lib/utils/cart-draft';
+import {
+  addLine, cartCount as countOf, cartSubtotal, changeQty as changeLineQty, needsOptions, removeLine, restoreFromDraft,
+  type CartLine,
+} from '@/lib/utils/cart-lines';
 
 const notoSerif = Noto_Serif({ subsets: ['latin'], weight: ['400', '600', '700'], display: 'swap' });
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface CartItem {
-  product: PublicProduct;
-  qty: number;
-}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -33,7 +34,7 @@ function ProductItem({
   currencySuffix: string;
   onAdd: (id: number) => void;
 }) {
-  const displayPrice = (product.discountPrice ?? product.price).toFixed(2);
+  const displayPrice = formatMoney(product.discountPrice ?? product.price, currencySuffix);
 
   return (
     <article className="max-w-[420px] mx-auto w-full">
@@ -80,7 +81,7 @@ function ProductItem({
         className={`font-semibold text-[18px] mt-1 ${notoSerif.className}`}
         style={{ color: MATCHA_DEEP }}
       >
-        {displayPrice} {currencySuffix}
+        {displayPrice}
       </p>
 
       {/* Add button */}
@@ -100,161 +101,43 @@ function ProductItem({
   );
 }
 
-// ─── Order Modal ──────────────────────────────────────────────────────────────
-
-function OrderModal({
-  cart,
-  store,
-  cartTotal,
-  onClose,
-}: {
-  cart: CartItem[];
-  store: StorefrontData['store'];
-  cartTotal: number;
-  onClose: () => void;
-}) {
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center"
-      style={{ background: 'rgba(62,74,63,0.4)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Your order"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div
-        className="w-full max-w-lg rounded-t-3xl px-6 pt-6 pb-8"
-        style={{
-          background: 'rgba(245,245,220,0.97)',
-          borderTop: '1px solid rgba(197,225,165,0.6)',
-        }}
-      >
-        {/* Drag handle */}
-        <div
-          className="w-9 h-1 mx-auto mb-4 rounded-full"
-          style={{ background: 'rgba(122,133,120,0.4)' }}
-          aria-hidden="true"
-        />
-
-        {/* Title row */}
-        <div className="flex items-center justify-between mb-5">
-          <h2
-            className={`font-semibold text-[22px] ${notoSerif.className}`}
-            style={{ color: INK }}
-          >
-            Your selection
-          </h2>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-full cursor-pointer hover:opacity-70 transition-opacity"
-            style={{ background: 'rgba(139,195,74,0.15)' }}
-            aria-label="Close order panel"
-          >
-            <X size={16} color={INK} />
-          </button>
-        </div>
-
-        {/* Cart items */}
-        <ul className="flex flex-col gap-3 mb-5">
-          {cart.map((item) => (
-            <li key={item.product.id} className="flex items-center justify-between">
-              <div className="flex-1 min-w-0">
-                <p
-                  className={`text-sm font-medium leading-tight ${notoSerif.className}`}
-                  style={{ color: INK }}
-                >
-                  {item.product.name}
-                </p>
-                <p
-                  className={`text-xs mt-0.5 ${notoSerif.className}`}
-                  style={{ color: MUTED }}
-                >
-                  qty: {item.qty}
-                </p>
-              </div>
-              <p
-                className={`font-semibold text-sm ml-4 flex-shrink-0 ${notoSerif.className}`}
-                style={{ color: MATCHA_DEEP }}
-              >
-                {((item.product.discountPrice ?? item.product.price) * item.qty).toFixed(2)}{' '}
-                {store.currencySuffix}
-              </p>
-            </li>
-          ))}
-        </ul>
-
-        {/* Divider */}
-        <div
-          className="h-px mb-4"
-          style={{ background: 'rgba(197,225,165,0.6)' }}
-          aria-hidden="true"
-        />
-
-        {/* Total */}
-        <div className="flex items-center justify-between mb-6">
-          <p
-            className={`font-semibold text-base ${notoSerif.className}`}
-            style={{ color: INK }}
-          >
-            Total
-          </p>
-          <p
-            className={`font-bold text-[20px] ${notoSerif.className}`}
-            style={{ color: INK }}
-          >
-            {cartTotal.toFixed(2)} {store.currencySuffix}
-          </p>
-        </div>
-
-        {/* Actions */}
-        <div className="flex gap-3">
-          <button
-            onClick={onClose}
-            className={`flex-1 py-3 rounded-3xl border text-sm font-medium cursor-pointer hover:opacity-70 transition-opacity ${notoSerif.className}`}
-            style={{ borderColor: INK, color: INK, background: 'transparent' }}
-          >
-            Continue browsing
-          </button>
-          <button
-            className={`flex-1 py-3 rounded-3xl text-white font-semibold text-sm cursor-pointer hover:opacity-90 transition-opacity ${notoSerif.className}`}
-            style={{ background: MATCHA_DEEP }}
-            aria-label="Place your order"
-          >
-            Place Order
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function MatchaZenTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
   const tc = data.templateContent;
 
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartLine[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [modalOpen, setModalOpen] = useState(false);
+  // The product whose variant / add-on choices are being made (null = dialog closed).
+  const [optionsFor, setOptionsFor] = useState<PublicProduct | null>(null);
 
-  const cartCount = cart.reduce((s, i) => s + i.qty, 0);
-  const cartTotal = cart.reduce(
-    (s, i) => s + (i.product.discountPrice ?? i.product.price) * i.qty,
-    0
-  );
+  // Restore a cart saved before a guest was redirected to /customer/login (see CheckoutDrawer).
+  useEffect(() => {
+    const draft = readCartDraft(store.slug);
+    if (!draft || draft.length === 0) return;
+    const restored = restoreFromDraft(draft, products);
+    if (restored.length > 0) {
+      setCart(restored);
+      setModalOpen(true);
+    }
+    clearCartDraft(store.slug);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.slug]);
+
+  const cartCount = countOf(cart);
+  const cartTotal = cartSubtotal(cart);
 
   function addToCart(productId: number) {
     const product = products.find((p) => p.id === productId);
     if (!product) return;
-    setCart((prev) => {
-      const existing = prev.find((i) => i.product.id === productId);
-      if (existing)
-        return prev.map((i) =>
-          i.product.id === productId ? { ...i, qty: i.qty + 1 } : i
-        );
-      return [...prev, { product, qty: 1 }];
-    });
+    // A product with variants or add-ons needs the customer to choose first.
+    if (needsOptions(product)) {
+      setOptionsFor(product);
+      return;
+    }
+    setCart((prev) => addLine(prev, product, 1));
   }
 
   // Grouped categories
@@ -372,27 +255,38 @@ export default function MatchaZenTemplate({ data }: { data: StorefrontData }) {
             boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
           }}
           onClick={() => setModalOpen(true)}
-          aria-label={`View order, ${cartCount} items, total ${cartTotal.toFixed(2)} ${store.currencySuffix}`}
+          aria-label={`View order, ${cartCount} items, total ${formatMoney(cartTotal, store.currencySuffix)}`}
         >
           <ChevronUp size={18} color={INK} aria-hidden="true" />
           <span
             className={`font-semibold text-[15px] ${notoSerif.className}`}
             style={{ color: INK }}
           >
-            View order ({cartCount})&nbsp;&middot;&nbsp;{cartTotal.toFixed(2)} {store.currencySuffix}
+            View order ({cartCount})&nbsp;&middot;&nbsp;{formatMoney(cartTotal, store.currencySuffix)}
           </span>
         </button>
       )}
 
-      {/* ── Order Modal ── */}
-      {modalOpen && (
-        <OrderModal
-          cart={cart}
-          store={store}
-          cartTotal={cartTotal}
-          onClose={() => setModalOpen(false)}
-        />
-      )}
+      <ProductOptionsDialog
+        product={optionsFor}
+        currencySuffix={store.currencySuffix}
+        accent={MATCHA_DEEP}
+        onClose={() => setOptionsFor(null)}
+        onConfirm={(selection, qty) => {
+          if (optionsFor) setCart((prev) => addLine(prev, optionsFor, qty, selection));
+          setOptionsFor(null);
+        }}
+      />
+      <CheckoutDrawer
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        storeSlug={store.slug}
+        cart={cart}
+        currencySuffix={store.currencySuffix}
+        onChangeQty={(key, delta) => setCart((prev) => changeLineQty(prev, key, delta))}
+        onRemove={(key) => setCart((prev) => removeLine(prev, key))}
+        onOrderPlaced={() => setCart([])}
+      />
     </div>
   );
 }

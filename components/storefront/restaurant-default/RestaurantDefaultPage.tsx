@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type { StorefrontData, PublicProduct } from '@/lib/types/store';
+import { ProductOptionsDialog } from '../shared/ProductOptionsDialog';
 import { getCuisinePreset } from '@/lib/data/cuisine-presets';
 import RestaurantNavbar from './RestaurantNavbar';
 import RestaurantHeroSection from './RestaurantHeroSection';
@@ -13,31 +14,29 @@ import CartBar from './CartBar';
 import WhatsAppButton from './WhatsAppButton';
 import CheckoutDrawer from './CheckoutDrawer';
 import { readCartDraft, clearCartDraft } from '@/lib/utils/cart-draft';
-
-interface CartItem {
-  product: PublicProduct;
-  qty: number;
-}
+import {
+  addLine, cartCount as countOf, cartSubtotal, changeQty as changeLineQty, needsOptions, removeLine, restoreFromDraft,
+  type CartLine,
+} from '@/lib/utils/cart-lines';
 
 interface RestaurantDefaultPageProps {
   data: StorefrontData;
 }
 
 export default function RestaurantDefaultPage({ data }: RestaurantDefaultPageProps) {
+  const scrollToMenu = () => document.getElementById('menu')?.scrollIntoView({ behavior: 'smooth' });
   const { store, products } = data;
   const preset = getCuisinePreset(store.businessSubCategorySlug);
 
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartLine[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
+  // The product whose variant / add-on choices are being made (null = dialog closed).
+  const [optionsFor, setOptionsFor] = useState<PublicProduct | null>(null);
 
   useEffect(() => {
     const draft = readCartDraft(store.slug);
     if (!draft || draft.length === 0) return;
-    const restored: CartItem[] = [];
-    for (const d of draft) {
-      const product = products.find((p) => String(p.id) === d.productId);
-      if (product) restored.push({ product, qty: d.qty });
-    }
+    const restored = restoreFromDraft(draft, products);
     if (restored.length > 0) {
       setCart(restored);
       setCartOpen(true);
@@ -46,27 +45,26 @@ export default function RestaurantDefaultPage({ data }: RestaurantDefaultPagePro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.slug]);
 
-  const cartCount = cart.reduce((s, i) => s + i.qty, 0);
-  const cartTotal = cart.reduce((s, i) => s + (i.product.discountPrice ?? i.product.price) * i.qty, 0);
+  const cartCount = countOf(cart);
+  const cartTotal = cartSubtotal(cart);
 
   function addToCart(productId: number) {
     const product = products.find((p) => p.id === productId);
     if (!product) return;
-    setCart((prev) => {
-      const existing = prev.find((i) => i.product.id === productId);
-      if (existing) return prev.map((i) => i.product.id === productId ? { ...i, qty: i.qty + 1 } : i);
-      return [...prev, { product, qty: 1 }];
-    });
+    // A product with variants or add-ons needs the customer to choose first.
+    if (needsOptions(product)) {
+      setOptionsFor(product);
+      return;
+    }
+    setCart((prev) => addLine(prev, product, 1));
   }
 
-  function changeQty(productId: number, delta: number) {
-    setCart((prev) => prev
-      .map((i) => i.product.id === productId ? { ...i, qty: i.qty + delta } : i)
-      .filter((i) => i.qty > 0));
+  function changeQty(key: string, delta: number) {
+    setCart((prev) => changeLineQty(prev, key, delta));
   }
 
-  function removeFromCart(productId: number) {
-    setCart((prev) => prev.filter((i) => i.product.id !== productId));
+  function removeFromCart(key: string) {
+    setCart((prev) => removeLine(prev, key));
   }
 
   const tc = data.templateContent;
@@ -128,13 +126,14 @@ export default function RestaurantDefaultPage({ data }: RestaurantDefaultPagePro
         <RestaurantHeroSection
           content={heroContent}
           preset={preset}
-          onReserveTable={() => {}}
-          onOnlineOrder={() => {}}
+          onReserveTable={scrollToMenu}
+          onOnlineOrder={scrollToMenu}
         />
 
         <DeliveryTrustStrip
           preset={preset}
           deliveryInfo={store.deliveryInfo}
+          demo={data.demo}
         />
 
         <PopularDishesSection
@@ -171,6 +170,17 @@ export default function RestaurantDefaultPage({ data }: RestaurantDefaultPagePro
         whatsappNumber={store.whatsappNumber}
         storeName={name}
         primary={preset.primary}
+      />
+
+      <ProductOptionsDialog
+        product={optionsFor}
+        currencySuffix={store.currencySuffix}
+        accent={preset.primary}
+        onClose={() => setOptionsFor(null)}
+        onConfirm={(selection, qty) => {
+          if (optionsFor) setCart((prev) => addLine(prev, optionsFor, qty, selection));
+          setOptionsFor(null);
+        }}
       />
 
       <CheckoutDrawer

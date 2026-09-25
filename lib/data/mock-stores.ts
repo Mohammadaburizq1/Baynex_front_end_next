@@ -219,7 +219,7 @@ function baseStore() {
 
 const MOCK_STORES: Record<string, StorefrontData> = {
   'restaurant-default': {
-    store: makeStore({ slug: 'demo-restaurant', shopName: 'Byonix Restaurant', description: 'Fresh food made with love, served all day.', primaryColor: '#F5A142', businessSubCategorySlug: null }),
+    store: makeStore({ slug: 'demo-restaurant', shopName: 'khanGates Restaurant', description: 'Fresh food made with love, served all day.', primaryColor: '#F5A142', businessSubCategorySlug: null }),
     products: [
       { id: 1, name: 'Spaghetti Pasta', description: 'Classic tomato sauce, parmesan, and fresh basil.', category: 'Mains', price: 14.0, discountPrice: null, stock: 50, available: true, imageUrl: 'https://images.unsplash.com/photo-1621996346565-e3dbc646d9a9?auto=format&fit=crop&w=400&q=80' },
       { id: 2, name: 'Vegetable Salad', description: 'Crisp greens, seasonal vegetables, light vinaigrette.', category: 'Starters', price: 11.5, discountPrice: null, stock: 30, available: true, imageUrl: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&w=400&q=80' },
@@ -436,7 +436,7 @@ const MOCK_STORES: Record<string, StorefrontData> = {
   },
 
   'real-estate-skyline': {
-    store: makeStore({ slug: 'demo-skyline-estate', shopName: 'Skyline Estate', description: 'Ultra-luxury penthouses and exclusive city residences.', primaryColor: '#C5A880', businessType: 'real_estate', businessSubCategorySlug: 'real-estate-skyline-estate', mainBusinessCategoryLabel: 'Luxury Real Estate' }),
+    store: makeStore({ slug: 'demo-skyline-estate', shopName: 'Skyline Estate', description: 'Ultra-luxury penthouses and exclusive city residences.', primaryColor: '#C5A880', businessType: 'real_estate', businessSubCategorySlug: 'real-estate-skyline', mainBusinessCategoryLabel: 'Luxury Real Estate' }),
     products: REAL_ESTATE_PRODUCTS,
   },
 

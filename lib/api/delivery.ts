@@ -1,4 +1,18 @@
-import { apiRequest } from './client';
+import { apiRequest, API_BASE } from './client';
+
+export interface PublicFulfillment {
+  deliveryAvailable: boolean;
+  pickupAvailable: boolean;
+  freeDeliveryThreshold?: number | null;
+  zones: ApiDeliveryZone[];
+}
+
+export async function getPublicFulfillment(slug: string): Promise<PublicFulfillment> {
+  const res = await fetch(`${API_BASE}/api/public/stores/${encodeURIComponent(slug)}/fulfillment`);
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.message ?? 'Could not load fulfillment options.');
+  return body.data;
+}
 
 export interface ApiDeliveryZone {
   id: string;

@@ -19,6 +19,7 @@ export default function StorefrontFooter({
 
   return (
     <footer
+      id="contact"
       style={{ backgroundColor: heading }}
       className="px-4 sm:px-6 lg:px-8 pt-12 pb-8"
     >
@@ -39,7 +40,7 @@ export default function StorefrontFooter({
               </div>
               <div>
                 <p style={{ color: '#fff', fontWeight: 900, fontSize: 16, margin: 0 }} className="font-sans">{storeName}</p>
-                <p style={{ color: `${body}`, fontSize: 11, margin: 0 }} className="font-sans">Powered by ShopLink</p>
+                <p style={{ color: `${body}`, fontSize: 11, margin: 0 }} className="font-sans">Powered by khanGates</p>
               </div>
             </div>
             <p style={{ color: '#9CA3AF', fontSize: 13.5, lineHeight: 1.6, margin: 0 }} className="font-sans">
@@ -77,10 +78,11 @@ export default function StorefrontFooter({
               Quick Links
             </h4>
             <div className="flex flex-col gap-2.5">
-              {['Home', 'Menu', 'Reservations', 'About Us', 'Contact'].map((link) => (
+              {/* Only sections this page actually has (no reservations/about pages exist). */}
+              {([['Home', '#'], ['Menu', '#menu'], ['Contact', '#contact']] as const).map(([link, href]) => (
                 <a
                   key={link}
-                  href="#"
+                  href={href}
                   style={{ color: '#9CA3AF', fontSize: 13, textDecoration: 'none' }}
                   className="font-sans hover:text-white transition-colors"
                 >
@@ -98,7 +100,7 @@ export default function StorefrontFooter({
           </p>
           <p style={{ color: '#6B7280', fontSize: 12.5, margin: 0 }} className="font-sans">
             Powered by{' '}
-            <span style={{ color: primary, fontWeight: 700 }}>ShopLink</span>
+            <span style={{ color: primary, fontWeight: 700 }}>khanGates</span>
           </p>
         </div>
       </div>

@@ -1,4 +1,5 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
 import { useEffect, useRef, useState } from 'react';
 import { Bodoni_Moda, Outfit } from 'next/font/google';
@@ -8,11 +9,11 @@ import { defaultClothingContent } from '@/lib/data/clothing-presets';
 import { parseNavLinks } from '@/lib/utils/clothing-content';
 import CheckoutDrawer from '@/components/storefront/restaurant-default/CheckoutDrawer';
 import { readCartDraft, clearCartDraft } from '@/lib/utils/cart-draft';
-
-interface CartItem {
-  product: PublicProduct;
-  qty: number;
-}
+import {
+  addLine, cartCount as countOf, changeQty as changeLineQty, needsOptions, removeLine, restoreFromDraft,
+  type CartLine,
+} from '@/lib/utils/cart-lines';
+import { ProductOptionsDialog } from '@/components/storefront/shared/ProductOptionsDialog';
 
 const bodoni = Bodoni_Moda({ subsets: ['latin'], weight: ['400','500','700','900'], style: ['normal','italic'] });
 const outfit = Outfit({ subsets: ['latin'], weight: ['300','400','500','600'] });
@@ -47,10 +48,6 @@ const FALLBACK_COLLECTIONS = [
 ];
 
 const FALLBACK_HERO = 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=800&q=80';
-
-const CURRENCY_SYMBOLS: Record<string, string> = {
-  USD: '$', EUR: '€', GBP: '£', SAR: 'SR ', AED: 'AED ', KWD: 'KD ', QAR: 'QR ', BHD: 'BD ',
-};
 
 const hexToRgba = (hex: string, alpha: number) => {
   const c = hex.replace('#', '');
@@ -101,9 +98,7 @@ export default function FashionEditorialTemplate({
   const gold = store.primaryColor || DEFAULT_GOLD;
   const C = { dark: DARK, ivory: IVORY, gold, muted: MUTED };
 
-  const currencySymbol = CURRENCY_SYMBOLS[store.currencyCode] ?? (store.currencySuffix ? store.currencySuffix + ' ' : '$');
-  const formatPrice = (price: number) =>
-    `${currencySymbol}${price % 1 === 0 ? price : price.toFixed(2)}`;
+  const formatPrice = (price: number) => formatMoney(price, store.currencyCode);
 
   const ticker = `  ${content.tickerText}  •  `;
   const navLinks = parseNavLinks(content.navLinks);
@@ -123,12 +118,13 @@ export default function FashionEditorialTemplate({
       sub: `${items.length} piece${items.length !== 1 ? 's' : ''}`,
       img: items.find(p => p.imageUrl)?.imageUrl || FALLBACK_COLLECTIONS[0].img,
     }));
-  if (collections.length === 0) collections.push(...FALLBACK_COLLECTIONS);
+  if (collections.length === 0 && data.demo) collections.push(...FALLBACK_COLLECTIONS);
 
   const heroImg = content.heroImageUrl || products.find(p => p.imageUrl)?.imageUrl || FALLBACK_HERO;
 
   const stats = [
-    { v: Math.max(products.length, 12), suf: '+', l: 'Pieces Available' },
+    // Only the piece count is real; the other two are illustrative and render in the showcase only.
+    { v: data.demo ? Math.max(products.length, 12) : products.length, suf: data.demo ? '+' : '', l: 'Pieces Available' },
     { v: 48, suf: '', l: 'Ateliers' },
     { v: 2000, suf: '+', l: 'Pieces Crafted' },
   ];
@@ -140,21 +136,19 @@ export default function FashionEditorialTemplate({
   const c1 = useCountUp(stats[1].v, 1700, statsVis);
   const c2 = useCountUp(stats[2].v, 2000, statsVis);
   const statVals = [c0, c1, c2];
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartLine[]>([]);
+  // The product whose variant / add-on choices are being made (null = dialog closed).
+  const [optionsFor, setOptionsFor] = useState<PublicProduct | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
 
   useEffect(() => { const t = setTimeout(() => setHeroVis(true), 100); return () => clearTimeout(t); }, []);
-  useEffect(() => { const t = setInterval(() => setTIdx(i => (i + 1) % testimonials.length), 4500); return () => clearInterval(t); }, [testimonials.length]);
+  useEffect(() => { const t = setInterval(() => setTIdx(i => (i + 1) % Math.max(testimonials.length, 1)), 4500); return () => clearInterval(t); }, [testimonials.length]);
 
   // Restore a cart saved before a guest was redirected to /customer/login (see CheckoutDrawer).
   useEffect(() => {
     const draft = readCartDraft(store.slug);
     if (!draft || draft.length === 0) return;
-    const restored: CartItem[] = [];
-    for (const d of draft) {
-      const product = products.find(p => String(p.id) === d.productId);
-      if (product) restored.push({ product, qty: d.qty });
-    }
+    const restored = restoreFromDraft(draft, products);
     if (restored.length > 0) {
       setCart(restored);
       setCartOpen(true);
@@ -163,26 +157,25 @@ export default function FashionEditorialTemplate({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.slug]);
 
-  const cartCount = cart.reduce((sum, item) => sum + item.qty, 0);
+  const cartCount = countOf(cart);
 
   function addToCart(id: number) {
-    const product = products.find(p => p.id === id);
+    const product = products.find((p) => p.id === id);
     if (!product) return;
-    setCart(prev => {
-      const existing = prev.find(item => item.product.id === id);
-      if (existing) return prev.map(item => item.product.id === id ? { ...item, qty: item.qty + 1 } : item);
-      return [...prev, { product, qty: 1 }];
-    });
+    // A product with variants or add-ons needs the customer to choose first.
+    if (needsOptions(product)) {
+      setOptionsFor(product);
+      return;
+    }
+    setCart((prev) => addLine(prev, product, 1));
   }
 
-  function removeFromCart(id: number) {
-    setCart(prev => prev.filter(item => item.product.id !== id));
+  function removeFromCart(key: string) {
+    setCart((prev) => removeLine(prev, key));
   }
 
-  function changeQty(id: number, delta: number) {
-    setCart(prev =>
-      prev.map(item => item.product.id === id ? { ...item, qty: item.qty + delta } : item)
-        .filter(item => item.qty > 0));
+  function changeQty(key: string, delta: number) {
+    setCart((prev) => changeLineQty(prev, key, delta));
   }
 
   const up = (v: boolean, d = 0): React.CSSProperties => ({
@@ -270,7 +263,7 @@ export default function FashionEditorialTemplate({
               {content.heroDescription}
             </p>
             <div style={{ ...up(heroVis,450),display:'flex',gap:16,flexWrap:'wrap' }}>
-              <a href={wa ? `https://wa.me/${wa}` : '#'} style={{ display:'inline-flex',alignItems:'center',gap:10,padding:'14px 32px',background:C.gold,color:C.dark,textDecoration:'none',fontSize:11,letterSpacing:3,textTransform:'uppercase',fontWeight:600,cursor:'pointer' }}>
+              <a href={wa ? `https://wa.me/${wa}` : '#collections'} style={{ display:'inline-flex',alignItems:'center',gap:10,padding:'14px 32px',background:C.gold,color:C.dark,textDecoration:'none',fontSize:11,letterSpacing:3,textTransform:'uppercase',fontWeight:600,cursor:'pointer' }}>
                 {content.primaryCta}
               </a>
               <a href="#collections" style={{ display:'inline-flex',alignItems:'center',gap:10,padding:'14px 32px',border:`1px solid ${hexToRgba(C.ivory,0.25)}`,color:C.ivory,textDecoration:'none',fontSize:11,letterSpacing:3,textTransform:'uppercase',cursor:'pointer' }}>
@@ -403,7 +396,7 @@ export default function FashionEditorialTemplate({
             </blockquote>
           </div>
           <div style={{ display:'flex',justifyContent:'center',gap:80 }} className="srow">
-            {stats.map((s,i) => (
+            {(data.demo ? stats : stats.slice(0, 1)).map((s,i) => (
               <div key={i} style={{ textAlign:'center' }}>
                 <div style={{ fontFamily:bodoni.style.fontFamily,fontStyle:'italic',fontSize:52,color:C.gold,lineHeight:1 }}>
                   {statVals[i]}{s.suf}
@@ -416,6 +409,8 @@ export default function FashionEditorialTemplate({
       </section>
 
       {/* TESTIMONIALS */}
+
+      {testimonials.length > 0 && (<>
       <section style={{ padding:'100px 5%',background:C.ivory }}>
         <div style={{ maxWidth:1000,margin:'0 auto',textAlign:'center' }}>
           <p style={{ fontSize:11,letterSpacing:3,textTransform:'uppercase',color:C.gold,marginBottom:12 }}>{content.testimonialsEyebrow}</p>
@@ -437,7 +432,11 @@ export default function FashionEditorialTemplate({
         </div>
       </section>
 
-      {/* NEWSLETTER */}
+      </>)}
+
+      {/* NEWSLETTER: no subscription backend exists, so the form renders in the showcase only */}
+
+      {data.demo && (<>
       <section style={{ background:C.dark,padding:'80px 5%' }}>
         <div style={{ maxWidth:640,margin:'0 auto',textAlign:'center' }}>
           <div style={{ width:40,height:1,background:C.gold,margin:'0 auto 24px' }} />
@@ -450,6 +449,8 @@ export default function FashionEditorialTemplate({
         </div>
       </section>
 
+      </>)}
+
       {/* FOOTER */}
       <footer style={{ background:'#050505',padding:'48px 5%',borderTop:`1px solid ${hexToRgba(C.gold,0.15)}` }}>
         <div style={{ maxWidth:1280,margin:'0 auto',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:16 }}>
@@ -458,6 +459,16 @@ export default function FashionEditorialTemplate({
         </div>
       </footer>
 
+      <ProductOptionsDialog
+        product={optionsFor}
+        currencySuffix={store.currencySuffix}
+        accent={store.primaryColor || '#111827'}
+        onClose={() => setOptionsFor(null)}
+        onConfirm={(selection, qty) => {
+          if (optionsFor) setCart((prev) => addLine(prev, optionsFor, qty, selection));
+          setOptionsFor(null);
+        }}
+      />
       <CheckoutDrawer
         open={cartOpen}
         onClose={() => setCartOpen(false)}

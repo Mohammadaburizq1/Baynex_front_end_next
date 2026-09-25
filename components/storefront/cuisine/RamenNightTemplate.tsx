@@ -1,14 +1,20 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Source_Serif_4, Lato } from 'next/font/google';
-import type { StorefrontData } from '@/lib/types/store';
-import { ShoppingBag, X, Minus, Plus } from 'lucide-react';
+import type { StorefrontData, PublicProduct } from '@/lib/types/store';
+import { ShoppingBag } from 'lucide-react';
+import CheckoutDrawer from '@/components/storefront/restaurant-default/CheckoutDrawer';
+import { ProductOptionsDialog } from '@/components/storefront/shared/ProductOptionsDialog';
+import { readCartDraft, clearCartDraft } from '@/lib/utils/cart-draft';
+import {
+  addLine, cartCount as countOf, cartSubtotal, changeQty as changeLineQty, needsOptions, removeLine, restoreFromDraft,
+  type CartLine,
+} from '@/lib/utils/cart-lines';
 
 const sourceSerif = Source_Serif_4({ subsets: ['latin'], weight: ['300', '400', '600', '700'], style: ['normal', 'italic'] });
 const lato = Lato({ subsets: ['latin'], weight: ['300', '400', '700', '900'] });
-
-type CartItem = { id: number; name: string; price: number; qty: number };
 
 const CATEGORIES = ['All', 'Ramen', 'Small Plates', 'Drinks', 'Add-Ons'];
 
@@ -22,31 +28,42 @@ const STEAM_WISPS = Array.from({ length: 14 }, (_, i) => ({
 
 export default function RamenNightTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  // Real stores filter by their own categories; the fixed list is showcase-only (it matched nothing real).
+  const categories = data.demo ? CATEGORIES : ['All', ...Array.from(new Set(products.map(p => p.category).filter(Boolean)))];
   const tc = data.templateContent;
   const [activeCategory, setActiveCategory] = useState('All');
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartLine[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
+  // The product whose variant / add-on choices are being made (null = dialog closed).
+  const [optionsFor, setOptionsFor] = useState<PublicProduct | null>(null);
+
+  // Restore a cart saved before a guest was redirected to /customer/login (see CheckoutDrawer).
+  useEffect(() => {
+    const draft = readCartDraft(store.slug);
+    if (!draft || draft.length === 0) return;
+    const restored = restoreFromDraft(draft, products);
+    if (restored.length > 0) {
+      setCart(restored);
+      setCartOpen(true);
+    }
+    clearCartDraft(store.slug);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.slug]);
 
   const filtered =
     activeCategory === 'All' ? products : products.filter((p) => p.category === activeCategory);
 
-  const addToCart = (p: (typeof products)[0]) => {
-    setCart((prev) => {
-      const exists = prev.find((c) => c.id === p.id);
-      if (exists) return prev.map((c) => (c.id === p.id ? { ...c, qty: c.qty + 1 } : c));
-      return [...prev, { id: p.id, name: p.name, price: p.discountPrice ?? p.price, qty: 1 }];
-    });
+  const addToCart = (p: PublicProduct) => {
+    // A product with variants or add-ons needs the customer to choose first.
+    if (needsOptions(p)) {
+      setOptionsFor(p);
+      return;
+    }
+    setCart((prev) => addLine(prev, p, 1));
   };
 
-  const changeQty = (id: number, delta: number) =>
-    setCart((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, qty: c.qty + delta } : c)).filter((c) => c.qty > 0)
-    );
-
-  const total = cart.reduce((sum, c) => sum + c.price * c.qty, 0);
-  const itemCount = cart.reduce((sum, c) => sum + c.qty, 0);
-  const waMsg = `Hi! I'd like to order: ${cart.map((c) => `${c.qty}x ${c.name}`).join(', ')}. Total: $${total.toFixed(2)}`;
-  const waHref = `https://wa.me/${(store.whatsappNumber ?? '').replace(/\D/g, '')}?text=${encodeURIComponent(waMsg)}`;
+  const total = cartSubtotal(cart);
+  const itemCount = countOf(cart);
 
   return (
     <>
@@ -182,7 +199,7 @@ export default function RamenNightTemplate({ data }: { data: StorefrontData }) {
               <h2 className={sourceSerif.className} style={{ fontSize: 36, color: '#E8E6F0', fontStyle: 'italic' }}>Full Menu</h2>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {CATEGORIES.map((cat) => (
+              {categories.map((cat) => (
                 <button key={cat} className={`rn-tab${activeCategory === cat ? ' active' : ''} ${lato.className}`} style={{ fontSize: 13, fontWeight: 700 }} onClick={() => setActiveCategory(cat)}>
                   {cat}
                 </button>
@@ -208,11 +225,11 @@ export default function RamenNightTemplate({ data }: { data: StorefrontData }) {
                     <div>
                       {p.discountPrice ? (
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                          <span className={sourceSerif.className} style={{ fontSize: 24, fontWeight: 700, color: '#DC2626' }}>${p.discountPrice.toFixed(2)}</span>
-                          <span className={lato.className} style={{ fontSize: 14, color: '#4A475C', textDecoration: 'line-through' }}>${p.price.toFixed(2)}</span>
+                          <span className={sourceSerif.className} style={{ fontSize: 24, fontWeight: 700, color: '#DC2626' }}>{formatMoney(p.discountPrice, store.currencySuffix)}</span>
+                          <span className={lato.className} style={{ fontSize: 14, color: '#4A475C', textDecoration: 'line-through' }}>{formatMoney(p.price, store.currencySuffix)}</span>
                         </div>
                       ) : (
-                        <span className={sourceSerif.className} style={{ fontSize: 24, fontWeight: 700, color: '#DC2626' }}>${p.price.toFixed(2)}</span>
+                        <span className={sourceSerif.className} style={{ fontSize: 24, fontWeight: 700, color: '#DC2626' }}>{formatMoney(p.price, store.currencySuffix)}</span>
                       )}
                     </div>
                     <button className={`rn-add ${lato.className}`} style={{ fontSize: 13 }} onClick={() => addToCart(p)}>Add +</button>
@@ -223,53 +240,33 @@ export default function RamenNightTemplate({ data }: { data: StorefrontData }) {
           </div>
         </section>
 
-        {/* Cart sidebar */}
-        {cartOpen && (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 100 }}>
-            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)' }} onClick={() => setCartOpen(false)} />
-            <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 360, background: '#0C0B14', borderLeft: '1px solid #2A2740', animation: 'cartSlide 0.28s ease', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ padding: '20px 24px', borderBottom: '1px solid #2A2740', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <h3 className={sourceSerif.className} style={{ fontSize: 24, color: '#E8E6F0', fontStyle: 'italic' }}>Your Order</h3>
-                <button onClick={() => setCartOpen(false)} style={{ background: 'none', border: 'none', color: '#6B6880', cursor: 'pointer' }}><X size={20} /></button>
-              </div>
-              <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
-                {cart.length === 0 ? (
-                  <p className={lato.className} style={{ color: '#4A475C', textAlign: 'center', marginTop: 48, lineHeight: 1.8 }}>Your bowl is empty.<br />Add something from the menu!</p>
-                ) : cart.map((item) => (
-                  <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #1C1A2E' }}>
-                    <div style={{ flex: 1 }}>
-                      <p className={lato.className} style={{ color: '#E8E6F0', fontWeight: 700, fontSize: 14 }}>{item.name}</p>
-                      <p className={lato.className} style={{ color: '#6B6880', fontSize: 13 }}>${(item.price * item.qty).toFixed(2)}</p>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <button onClick={() => changeQty(item.id, -1)} style={{ background: '#2A2740', border: 'none', color: '#9A97A8', width: 26, height: 26, borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Minus size={12} /></button>
-                      <span className={lato.className} style={{ color: '#E8E6F0', fontWeight: 700, fontSize: 14, minWidth: 16, textAlign: 'center' }}>{item.qty}</span>
-                      <button onClick={() => changeQty(item.id, 1)} style={{ background: '#2A2740', border: 'none', color: '#9A97A8', width: 26, height: 26, borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={12} /></button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {cart.length > 0 && (
-                <div style={{ padding: '20px 24px', borderTop: '1px solid #2A2740' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                    <span className={lato.className} style={{ color: '#9A97A8', fontWeight: 700 }}>Total</span>
-                    <span className={sourceSerif.className} style={{ color: '#DC2626', fontSize: 22, fontWeight: 700 }}>${total.toFixed(2)}</span>
-                  </div>
-                  <a href={waHref} target="_blank" rel="noopener noreferrer" style={{ display: 'block', background: '#DC2626', color: 'white', borderRadius: 8, padding: '14px', textAlign: 'center', fontFamily: lato.style.fontFamily, fontWeight: 700, fontSize: 15, letterSpacing: '0.06em', textDecoration: 'none' }}>
-                    ORDER VIA WHATSAPP
-                  </a>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        <ProductOptionsDialog
+          product={optionsFor}
+          currencySuffix={store.currencySuffix}
+          accent="#DC2626"
+          onClose={() => setOptionsFor(null)}
+          onConfirm={(selection, qty) => {
+            if (optionsFor) setCart((prev) => addLine(prev, optionsFor, qty, selection));
+            setOptionsFor(null);
+          }}
+        />
+        <CheckoutDrawer
+          open={cartOpen}
+          onClose={() => setCartOpen(false)}
+          storeSlug={store.slug}
+          cart={cart}
+          currencySuffix={store.currencySuffix}
+          onChangeQty={(key, delta) => setCart((prev) => changeLineQty(prev, key, delta))}
+          onRemove={(key) => setCart((prev) => removeLine(prev, key))}
+          onOrderPlaced={() => setCart([])}
+        />
 
         {/* Bottom cart bar */}
         {itemCount > 0 && !cartOpen && (
           <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 40, padding: '0 24px 20px' }}>
             <button onClick={() => setCartOpen(true)} className={lato.className} style={{ width: '100%', maxWidth: 600, margin: '0 auto', display: 'flex', background: '#DC2626', border: 'none', borderRadius: 10, padding: '15px 24px', cursor: 'pointer', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 8px 32px rgba(220,38,38,0.45)' }}>
               <span style={{ color: 'white', fontWeight: 700, fontSize: 14 }}>{itemCount} item{itemCount !== 1 ? 's' : ''}</span>
-              <span style={{ color: 'white', fontWeight: 700, fontSize: 15 }}>View Order · ${total.toFixed(2)}</span>
+              <span style={{ color: 'white', fontWeight: 700, fontSize: 15 }}>View Order · {formatMoney(total, store.currencySuffix)}</span>
             </button>
           </div>
         )}

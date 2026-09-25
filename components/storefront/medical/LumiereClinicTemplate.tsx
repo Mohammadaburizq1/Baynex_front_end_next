@@ -1,4 +1,5 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
 import { useState, useEffect, useRef } from 'react';
 import { Cormorant_Garamond, Jost } from 'next/font/google';
@@ -101,7 +102,9 @@ export default function LumiereClinicTemplate({ data }: { data: StorefrontData }
   }, []);
 
   const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
-  const waBase = `https://wa.me/${(store.whatsappNumber ?? '').replace(/\D/g, '')}`;
+  const waDigits = (store.whatsappNumber ?? '').replace(/\D/g, '');
+  // No number, no WhatsApp CTAs: a bare wa.me link opens WhatsApp with no recipient.
+  const waBase = waDigits ? `https://wa.me/${waDigits}` : null;
   const categories = ['All', ...Array.from(new Set(products.map(p => p.category)))];
   const filtered = category === 'All' ? products : products.filter(p => p.category === category);
 
@@ -519,10 +522,12 @@ export default function LumiereClinicTemplate({ data }: { data: StorefrontData }
             </div>
           </div>
           <div className="lc-nav-links">
-            {[['Treatments','lc-services'],['About','lc-about'],['Our Doctors','lc-team'],['Contact','lc-contact']].map(([l,id]) => (
+            {[['Treatments','lc-services'],['About','lc-about'],...(data.demo ? [['Our Doctors','lc-team']] : []),['Contact','lc-contact']].map(([l,id]) => (
               <button key={id} className="lc-nav-link" onClick={() => scrollTo(id)}>{l}</button>
             ))}
-            <button className="lc-nav-cta" onClick={() => window.open(waBase,'_blank')}>Book Consultation</button>
+            {waBase && (
+            <button className="lc-nav-cta" onClick={() => window.open(waBase,'_blank')}>Book on WhatsApp</button>
+            )}
           </div>
         </div>
       </nav>
@@ -552,6 +557,7 @@ export default function LumiereClinicTemplate({ data }: { data: StorefrontData }
               <button className="lc-btn-outline" onClick={() => scrollTo('lc-about')}>Our Philosophy</button>
             </div>
           </div>
+          {data.demo && (
           <div className="lc-hero-stats" ref={statsRef}>
             {[
               { v: c1, sfx: <em>+</em>, label: 'Treatments Performed' },
@@ -564,10 +570,12 @@ export default function LumiereClinicTemplate({ data }: { data: StorefrontData }
               </div>
             ))}
           </div>
+          )}
         </div>
       </div>
 
       {/* ── GOLD STATS ── */}
+      {data.demo && (<>
       <div className="lc-gold-band">
         <div className="lc-gold-inner">
           {[
@@ -583,6 +591,7 @@ export default function LumiereClinicTemplate({ data }: { data: StorefrontData }
           ))}
         </div>
       </div>
+      </>)}
 
       {/* ── TREATMENTS ── */}
       <div id="lc-services">
@@ -605,12 +614,14 @@ export default function LumiereClinicTemplate({ data }: { data: StorefrontData }
                   <div className={`lc-svc-num ${cormorant.className}`}>0{i + 1}</div>
                   <div className="lc-svc-icon"><Icon size={20} /></div>
                   <div className="lc-svc-cat">{svc.category}</div>
-                  <div className={`lc-svc-price ${cormorant.className}`}>From ${svc.price}</div>
+                  <div className={`lc-svc-price ${cormorant.className}`}>From {formatMoney(svc.discountPrice ?? svc.price, store.currencyCode)}</div>
                   <div className={`lc-svc-name ${cormorant.className}`}>{svc.name}</div>
                   <p className="lc-svc-desc">{svc.description}</p>
+                  {waBase && (
                   <a className="lc-svc-book" href={`${waBase}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noopener noreferrer">
                     Enquire <ArrowRight size={11} />
                   </a>
+                  )}
                 </div>
               );
             })}
@@ -625,10 +636,12 @@ export default function LumiereClinicTemplate({ data }: { data: StorefrontData }
             <div style={left(aboutVis)}>
               <div className="lc-about-img-wrap">
                 <img className="lc-about-img" src="https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=700&q=80" alt="Clinic" />
+                {data.demo && (
                 <div className="lc-about-badge">
                   <div className={`lc-about-badge-n ${cormorant.className}`}><em>15</em></div>
                   <div className="lc-about-badge-l">Years of<br />Excellence</div>
                 </div>
+                )}
               </div>
             </div>
             <div style={right(aboutVis, 100)}>
@@ -655,6 +668,7 @@ export default function LumiereClinicTemplate({ data }: { data: StorefrontData }
       </div>
 
       {/* ── TEAM ── */}
+      {data.demo && (<>
       <div id="lc-team">
         <div className="lc-wrap" ref={teamRef}>
           <div style={up(teamVis)}>
@@ -670,17 +684,21 @@ export default function LumiereClinicTemplate({ data }: { data: StorefrontData }
                   <div className="lc-doctor-spec">{d.spec}</div>
                   <div className={`lc-doctor-name ${cormorant.className}`}>{d.name}</div>
                   <div className="lc-doctor-title">{d.title}</div>
+                  {waBase && (
                   <a className="lc-doctor-wa" href={`${waBase}?text=${encodeURIComponent(`Hi, I'd like to book a consultation with ${d.name}.`)}`} target="_blank" rel="noopener noreferrer">
                     Book <ArrowRight size={10} />
                   </a>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         </div>
       </div>
+      </>)}
 
       {/* ── TESTIMONIALS ── */}
+      {data.demo && (<>
       <div className="lc-test-band" ref={testRef}>
         <div className="lc-test-inner">
           <div style={{ ...up(testVis), textAlign: 'center' }}>
@@ -701,6 +719,7 @@ export default function LumiereClinicTemplate({ data }: { data: StorefrontData }
           </div>
         </div>
       </div>
+      </>)}
 
       {/* ── CTA ── */}
       <div id="lc-contact" className="lc-cta-band" ref={ctaRef}>
@@ -712,10 +731,12 @@ export default function LumiereClinicTemplate({ data }: { data: StorefrontData }
             <p className="lc-cta-sub">Every journey begins with a consultation. Book yours today — complimentary, no obligation, entirely confidential.</p>
           </div>
           <div className="lc-cta-right" style={right(ctaVis, 100)}>
+            {waBase && (
             <a className="lc-cta-wa" href={waBase} target="_blank" rel="noopener noreferrer">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-              Book a Consultation
+              Book on WhatsApp
             </a>
+            )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
               {(tc?.openingHours || store.openingHours) && <div className="lc-cta-detail"><Clock size={13} className="lc-cta-detail-icon" />{tc?.openingHours || store.openingHours}</div>}
               <div className="lc-cta-detail"><MapPin size={13} className="lc-cta-detail-icon" />Private Clinic Location</div>

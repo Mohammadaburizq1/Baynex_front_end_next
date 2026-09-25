@@ -1,4 +1,5 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
 import { useState, useEffect, useRef } from 'react';
 import { DM_Serif_Display, Work_Sans } from 'next/font/google';
@@ -63,7 +64,7 @@ const TESTIMONIALS = [
 ];
 
 const STRENGTHS = [
-  { Icon: Shield, title: 'Trusted Track Record', desc: 'Over 400 engagements across 15 industries with a 96% client retention rate.' },
+  { Icon: Shield, title: 'Trusted Track Record', desc: 'Clear scopes, measurable outcomes and regular progress reviews.' },
   { Icon: Lightbulb, title: 'Bespoke Strategy', desc: 'We build from scratch every time. Your challenge is unique — your solution should be too.' },
   { Icon: TrendingUp, title: 'Results-Driven', desc: 'Every engagement is tied to clear outcomes and metrics. We hold ourselves accountable.' },
   { Icon: Users, title: 'Collaborative Approach', desc: 'We embed with your team rather than advise from a distance. Real work, real change.' },
@@ -101,7 +102,9 @@ export default function MeridianProTemplate({ data }: { data: StorefrontData }) 
   }, []);
 
   const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
-  const waBase = `https://wa.me/${(store.whatsappNumber ?? '').replace(/\D/g, '')}`;
+  const waDigits = (store.whatsappNumber ?? '').replace(/\D/g, '');
+  // No number, no WhatsApp CTAs: a bare wa.me link opens WhatsApp with no recipient.
+  const waBase = waDigits ? `https://wa.me/${waDigits}` : null;
   const categories = ['All', ...Array.from(new Set(products.map(p => p.category)))];
   const filtered = category === 'All' ? products : products.filter(p => p.category === category);
 
@@ -809,7 +812,9 @@ export default function MeridianProTemplate({ data }: { data: StorefrontData }) 
             {[['Services','mp-services'],['About','mp-about'],['Process','mp-process'],['Contact','mp-contact']].map(([l,id]) => (
               <button key={id} className="mp-nav-link" onClick={() => scrollTo(id)}>{l}</button>
             ))}
-            <button className="mp-nav-cta" onClick={() => window.open(waBase,'_blank')}>Book a Call</button>
+            {waBase && (
+            <button className="mp-nav-cta" onClick={() => window.open(waBase,'_blank')}>Book on WhatsApp</button>
+            )}
           </div>
         </div>
       </nav>
@@ -833,6 +838,7 @@ export default function MeridianProTemplate({ data }: { data: StorefrontData }) 
           </div>
         </div>
         <div className="mp-hero-right" ref={heroStatsRef}>
+          {data.demo && (
           <div className="mp-stats-grid">
             {[
               { v: c1, s: '+', l: 'Clients Served', sub: 'across all sectors' },
@@ -847,6 +853,7 @@ export default function MeridianProTemplate({ data }: { data: StorefrontData }) 
               </div>
             ))}
           </div>
+          )}
         </div>
       </div>
 
@@ -868,12 +875,14 @@ export default function MeridianProTemplate({ data }: { data: StorefrontData }) 
               return (
                 <div key={svc.id} className="mp-svc-card" style={up(servicesVis, 80 + i * 60)}>
                   <div className="mp-svc-cat">{svc.category}</div>
-                  <div className={`mp-svc-price ${dmSerif.className}`}>${svc.price}</div>
+                  <div className={`mp-svc-price ${dmSerif.className}`}>{formatMoney(svc.discountPrice ?? svc.price, store.currencyCode)}</div>
                   <div className="mp-svc-name">{svc.name}</div>
                   <p className="mp-svc-desc">{svc.description}</p>
+                  {waBase && (
                   <a className="mp-svc-wa" href={`${waBase}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noopener noreferrer">
-                    Book Now <ChevronRight size={12} />
+                    Book on WhatsApp <ChevronRight size={12} />
                   </a>
+                  )}
                 </div>
               );
             })}
@@ -889,10 +898,12 @@ export default function MeridianProTemplate({ data }: { data: StorefrontData }) 
               <div style={{ position: 'relative' }}>
                 <img className="mp-about-img" src="https://images.unsplash.com/photo-1542744173-8e7e53415bb0?auto=format&fit=crop&w=800&q=80" alt="Office" />
                 <div className="mp-about-img-border" />
+                {data.demo && (
                 <div className="mp-about-badge">
                   <div className={`mp-badge-n ${dmSerif.className}`}>18+</div>
                   <div className="mp-badge-l">Years of<br/>Expertise</div>
                 </div>
+                )}
               </div>
             </div>
             <div style={fromRight(aboutVis, 100)}>
@@ -940,6 +951,7 @@ export default function MeridianProTemplate({ data }: { data: StorefrontData }) 
       </div>
 
       {/* ── TEAM ── */}
+      {data.demo && (<>
       <div className="mp-team-band">
         <div className="mp-wrap" ref={teamRef}>
           <div style={up(teamVis)}>
@@ -955,17 +967,21 @@ export default function MeridianProTemplate({ data }: { data: StorefrontData }) 
                   <div className="mp-agent-name">{t.name}</div>
                   <div className="mp-agent-role">{t.title}</div>
                   <div className="mp-agent-years">{t.years} years of experience</div>
+                  {waBase && (
                   <a className="mp-agent-wa" href={`${waBase}?text=${encodeURIComponent(`Hello, I'd like to speak with ${t.name} at ${store.shopName}.`)}`} target="_blank" rel="noopener noreferrer">
                     Connect <ChevronRight size={12} />
                   </a>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         </div>
       </div>
+      </>)}
 
       {/* ── TESTIMONIALS ── */}
+      {data.demo && (<>
       <div className="mp-test-band" ref={testRef}>
         <div className="mp-test-inner">
           <div style={up(testVis)}>
@@ -985,6 +1001,7 @@ export default function MeridianProTemplate({ data }: { data: StorefrontData }) 
           </div>
         </div>
       </div>
+      </>)}
 
       {/* ── CTA ── */}
       <div id="mp-contact" className="mp-cta-band" ref={ctaRef}>
@@ -998,10 +1015,12 @@ export default function MeridianProTemplate({ data }: { data: StorefrontData }) 
             </p>
           </div>
           <div className="mp-cta-right" style={fromRight(ctaVis, 100)}>
+            {waBase && (
             <a className="mp-cta-wa" href={waBase} target="_blank" rel="noopener noreferrer">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
               Book via WhatsApp
             </a>
+            )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
               {(tc?.openingHours || store.openingHours) && <div className="mp-cta-detail"><Clock size={13} className="mp-cta-detail-icon" />{tc?.openingHours || store.openingHours}</div>}
               <div className="mp-cta-detail"><MapPin size={13} className="mp-cta-detail-icon" />City Centre Office</div>

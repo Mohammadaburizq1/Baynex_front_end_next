@@ -1,4 +1,5 @@
 'use client';
+import { formatMoneyCompact } from '@/lib/utils';
 
 import { useState, useEffect, useRef } from 'react';
 import { Cinzel, Nunito_Sans } from 'next/font/google';
@@ -34,12 +35,6 @@ const SERVICES = [
   { Icon: Key, title: 'Leasing', desc: 'Curated rental matching in the most sought-after addresses across the city.' },
   { Icon: BarChart2, title: 'Portfolio', desc: 'Strategic investment advisory to grow and protect your real estate wealth over time.' },
 ];
-
-function formatPrice(p: number): string {
-  if (p >= 1_000_000) return `$${(p / 1_000_000).toFixed(1)}M`;
-  if (p >= 1_000) return `$${Math.round(p / 1_000)}K`;
-  return `$${p.toLocaleString()}`;
-}
 
 function parseSpecs(desc: string) {
   return { specs: desc.split(' · ').slice(0, 3) };
@@ -85,6 +80,7 @@ function useCountUp(target: number, dur: number, active: boolean) {
 
 export default function EclipseEstateTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const formatPrice = (p: number) => formatMoneyCompact(p, store.currencyCode);
   const tc = data.templateContent;
   const [category, setCategory] = useState('All');
   const [navSolid, setNavSolid] = useState(false);
@@ -108,7 +104,9 @@ export default function EclipseEstateTemplate({ data }: { data: StorefrontData }
   }, []);
 
   const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
-  const waBase = `https://wa.me/${(store.whatsappNumber ?? '').replace(/\D/g, '')}`;
+  const waDigits = (store.whatsappNumber ?? '').replace(/\D/g, '');
+  // No number, no WhatsApp CTAs: a bare wa.me link opens WhatsApp with no recipient.
+  const waBase = waDigits ? `https://wa.me/${waDigits}` : null;
   const categories = ['All', ...Array.from(new Set(products.map(p => p.category)))];
   const filtered = category === 'All' ? products : products.filter(p => p.category === category);
 
@@ -995,7 +993,9 @@ export default function EclipseEstateTemplate({ data }: { data: StorefrontData }
             {[['Properties', 'ee-properties'], ['About', 'ee-about'], ['Services', 'ee-services'], ['Contact', 'ee-contact']].map(([l, id]) => (
               <button key={id} className="ee-nav-link" onClick={() => scrollTo(id)}>{l}</button>
             ))}
+            {waBase && (
             <button className="ee-nav-cta" onClick={() => window.open(waBase, '_blank')}>Enquire</button>
+            )}
           </div>
         </div>
       </nav>
@@ -1038,12 +1038,13 @@ export default function EclipseEstateTemplate({ data }: { data: StorefrontData }
             <button className="ee-btn-ghost" onClick={() => scrollTo('ee-about')}>Our Heritage</button>
           </div>
         </div>
-        <div className="ee-scroll-cue" onClick={() => scrollTo('ee-stats')}>
+        <div className="ee-scroll-cue" onClick={() => scrollTo(data.demo ? 'ee-stats' : 'ee-properties')}>
           <ChevronDown size={26} />
         </div>
       </section>
 
       {/* ─── STATS ─── */}
+      {data.demo && (<>
       <div id="ee-stats" className="ee-stats-band" ref={statsRef}>
         <div className="ee-stats-inner">
           {[
@@ -1063,6 +1064,7 @@ export default function EclipseEstateTemplate({ data }: { data: StorefrontData }
           ))}
         </div>
       </div>
+      </>)}
 
       {/* ─── ABOUT ─── */}
       <section id="ee-about">
@@ -1071,10 +1073,12 @@ export default function EclipseEstateTemplate({ data }: { data: StorefrontData }
             <div className="ee-about-images">
               <img className="ee-about-img-a" src="https://images.unsplash.com/photo-1613490493576-7fde63acd811?auto=format&fit=crop&w=800&q=80" alt="Property" />
               <img className="ee-about-img-b" src="https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?auto=format&fit=crop&w=600&q=80" alt="Interior" />
+              {data.demo && (
               <div className="ee-about-num-badge">
                 <div className={`ee-about-num ${cinzel.className}`}>28+</div>
                 <div className="ee-about-num-label">Years of<br />Excellence</div>
               </div>
+              )}
             </div>
             <div className="ee-about-text" style={reveal(aboutVis, 150)}>
               <div className="ee-label">
@@ -1154,9 +1158,11 @@ export default function EclipseEstateTemplate({ data }: { data: StorefrontData }
                         <span key={si} className="ee-prop-spec"><SpecIcon label={s} />{s}</span>
                       ))}
                     </div>
+                    {waBase && (
                     <a className="ee-prop-wa" href={`${waBase}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noopener noreferrer">
                       Request Details
                     </a>
+                    )}
                   </div>
                 </div>
               );
@@ -1166,6 +1172,7 @@ export default function EclipseEstateTemplate({ data }: { data: StorefrontData }
       </section>
 
       {/* ─── TEAM ─── */}
+      {data.demo && (<>
       <div className="ee-team-band" ref={teamRef}>
         <div className="ee-team-inner">
           <div style={reveal(teamVis)}>
@@ -1193,15 +1200,18 @@ export default function EclipseEstateTemplate({ data }: { data: StorefrontData }
                       <div className="ee-agent-sl">Years</div>
                     </div>
                   </div>
+                  {waBase && (
                   <a className="ee-agent-wa" href={`${waBase}?text=${encodeURIComponent(`Hello, I'd like to speak with ${a.name} at ${store.shopName}.`)}`} target="_blank" rel="noopener noreferrer">
                     Connect <ChevronRight size={10} />
                   </a>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         </div>
       </div>
+      </>)}
 
       {/* ─── CONTACT ─── */}
       <div id="ee-contact" className="ee-cta-band" ref={ctaRef}>
@@ -1216,10 +1226,12 @@ export default function EclipseEstateTemplate({ data }: { data: StorefrontData }
           </div>
           <h2 className={`ee-cta-h2 ${cinzel.className}`}>Begin Your Journey</h2>
           <p className="ee-cta-sub">Whether acquiring, disposing, or exploring — our principals are available for confidential consultation at your convenience.</p>
+          {waBase && (
           <a className="ee-cta-wa" href={waBase} target="_blank" rel="noopener noreferrer">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
             Enquire via WhatsApp
           </a>
+          )}
           <div className="ee-cta-details">
             {(tc?.openingHours || store.openingHours) && <div className="ee-cta-detail"><Clock size={13} />{tc?.openingHours || store.openingHours}</div>}
             <div className="ee-cta-detail"><MapPin size={13} />Prime Business District</div>

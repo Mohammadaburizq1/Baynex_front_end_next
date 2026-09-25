@@ -48,7 +48,7 @@ interface Template {
 
 // ── Template catalog ────────────────────────────────────────────────────────
 const TEMPLATES: Template[] = [
-  { id: 'restaurant-default', name: 'Byonix Restaurant', description: 'Cream landing with menu, cart, and delivery — our most popular start.', businessType: 'restaurant', tags: ['restaurant', 'popular', 'modern', 'arabic'], gradient: ['#FFF8F0', '#E8D5C4'], accentColor: '#92400E', isPopular: true },
+  { id: 'restaurant-default', name: 'khanGates Restaurant', description: 'Cream landing with menu, cart, and delivery — our most popular start.', businessType: 'restaurant', tags: ['restaurant', 'popular', 'modern', 'arabic'], gradient: ['#FFF8F0', '#E8D5C4'], accentColor: '#92400E', isPopular: true },
   { id: 'retail-classic', name: 'Classic Store', description: 'Clean product grid for retail and general merchandise.', businessType: 'retail', tags: ['store', 'popular', 'modern'], gradient: ['#F5F5F5', '#64748B'], accentColor: '#475569', isPopular: true },
   { id: 'catalog-inquiry', name: 'Catalog & Inquiry', description: 'Showcase catalog with WhatsApp inquiry — no cart required.', businessType: 'catalog', tags: ['store', 'modern'], gradient: ['#1E293B', '#475569'], accentColor: '#6366F1' },
   { id: 'real-estate-skyline', name: 'Skyline Estate', description: 'Cinematic vertical feed for ultra-luxury penthouses and exclusive listings.', businessType: 'real_estate', tags: ['real_estate', 'luxury', 'new', 'modern'], gradient: ['#0B0C10', '#1F2833'], accentColor: '#6366F1', isNew: true },
@@ -2011,7 +2011,7 @@ function BusinessDetailsStep({
             style={{ background: 'rgba(99,102,241,0.12)', borderColor: '#2A2F3D' }}
           >
             <p className="text-sm font-bold" style={{ color: '#818CF8' }}>
-              shoplink.app/{slug || 'your-shop'}
+              khanGates.app/{slug || 'your-shop'}
             </p>
           </div>
         )}
@@ -2512,8 +2512,9 @@ export default function OnboardingPage() {
             // this is just the optimistic local guess shown before the dashboard's first fetch
             // confirms real status, so it must not claim a state the backend won't grant.
             status: 'draft',
-            currency: 'MYR',
-            timezone: 'Asia/Kuala_Lumpur',
+            currency: 'JOD',
+            timezone: 'UTC',
+            locale: 'en',
             email: '',
             idempotencyKey,
             savedAt,
@@ -2663,7 +2664,7 @@ export default function OnboardingPage() {
         <span className="text-white font-extrabold text-[17px] font-jakarta tracking-tight">
           Set Up Your Store
         </span>
-        <span className="text-white/50 text-sm font-semibold font-jakarta">ShopLink</span>
+        <span className="text-white/50 text-sm font-semibold font-jakarta">khanGates</span>
       </div>
 
       {/* Scrollable content */}

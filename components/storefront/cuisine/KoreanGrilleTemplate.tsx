@@ -1,14 +1,20 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Bebas_Neue, Work_Sans } from 'next/font/google';
-import type { StorefrontData } from '@/lib/types/store';
-import { ShoppingBag, X, Minus, Plus, Flame } from 'lucide-react';
+import type { StorefrontData, PublicProduct } from '@/lib/types/store';
+import { ShoppingBag, Flame } from 'lucide-react';
+import CheckoutDrawer from '@/components/storefront/restaurant-default/CheckoutDrawer';
+import { ProductOptionsDialog } from '@/components/storefront/shared/ProductOptionsDialog';
+import { readCartDraft, clearCartDraft } from '@/lib/utils/cart-draft';
+import {
+  addLine, cartCount as countOf, cartSubtotal, changeQty as changeLineQty, needsOptions, removeLine, restoreFromDraft,
+  type CartLine,
+} from '@/lib/utils/cart-lines';
 
 const bebas = Bebas_Neue({ subsets: ['latin'], weight: '400' });
 const workSans = Work_Sans({ subsets: ['latin'], weight: ['300', '400', '500', '600', '700'] });
-
-type CartItem = { id: number; name: string; price: number; qty: number };
 
 const CATEGORIES = ['All', 'BBQ', 'Sides', 'Drinks', 'Desserts'];
 
@@ -26,31 +32,42 @@ const CARD_GLOWS = ['#E91E8C', '#9C27B0', '#FF6FCF', '#E91E8C', '#7B1FA2'];
 
 export default function KoreanGrilleTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  // Real stores filter by their own categories; the fixed list is showcase-only (it matched nothing real).
+  const categories = data.demo ? CATEGORIES : ['All', ...Array.from(new Set(products.map(p => p.category).filter(Boolean)))];
   const tc = data.templateContent;
   const [activeCategory, setActiveCategory] = useState('All');
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartLine[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
+  // The product whose variant / add-on choices are being made (null = dialog closed).
+  const [optionsFor, setOptionsFor] = useState<PublicProduct | null>(null);
+
+  // Restore a cart saved before a guest was redirected to /customer/login (see CheckoutDrawer).
+  useEffect(() => {
+    const draft = readCartDraft(store.slug);
+    if (!draft || draft.length === 0) return;
+    const restored = restoreFromDraft(draft, products);
+    if (restored.length > 0) {
+      setCart(restored);
+      setCartOpen(true);
+    }
+    clearCartDraft(store.slug);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.slug]);
 
   const filtered =
     activeCategory === 'All' ? products : products.filter((p) => p.category === activeCategory);
 
-  const addToCart = (p: (typeof products)[0]) => {
-    setCart((prev) => {
-      const exists = prev.find((c) => c.id === p.id);
-      if (exists) return prev.map((c) => (c.id === p.id ? { ...c, qty: c.qty + 1 } : c));
-      return [...prev, { id: p.id, name: p.name, price: p.discountPrice ?? p.price, qty: 1 }];
-    });
+  const addToCart = (p: PublicProduct) => {
+    // A product with variants or add-ons needs the customer to choose first.
+    if (needsOptions(p)) {
+      setOptionsFor(p);
+      return;
+    }
+    setCart((prev) => addLine(prev, p, 1));
   };
 
-  const changeQty = (id: number, delta: number) =>
-    setCart((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, qty: c.qty + delta } : c)).filter((c) => c.qty > 0)
-    );
-
-  const total = cart.reduce((sum, c) => sum + c.price * c.qty, 0);
-  const itemCount = cart.reduce((sum, c) => sum + c.qty, 0);
-  const waMsg = `Hi! I'd like to order: ${cart.map((c) => `${c.qty}x ${c.name}`).join(', ')}. Total: $${total.toFixed(2)}`;
-  const waHref = `https://wa.me/${(store.whatsappNumber ?? '').replace(/\D/g, '')}?text=${encodeURIComponent(waMsg)}`;
+  const total = cartSubtotal(cart);
+  const itemCount = countOf(cart);
 
   return (
     <>
@@ -197,7 +214,7 @@ export default function KoreanGrilleTemplate({ data }: { data: StorefrontData })
               <h2 className={bebas.className} style={{ fontSize: 42, color: '#F0D0F8', letterSpacing: '0.04em' }}>TONIGHT'S MENU</h2>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {CATEGORIES.map((cat) => (
+              {categories.map((cat) => (
                 <button key={cat} className={`kg-tab${activeCategory === cat ? ' active' : ''} ${workSans.className}`} style={{ fontSize: 13, fontWeight: 700 }} onClick={() => setActiveCategory(cat)}>
                   {cat}
                 </button>
@@ -227,11 +244,11 @@ export default function KoreanGrilleTemplate({ data }: { data: StorefrontData })
                       <div>
                         {p.discountPrice ? (
                           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                            <span className={bebas.className} style={{ fontSize: 26, color: glow }}>${p.discountPrice.toFixed(2)}</span>
-                            <span className={workSans.className} style={{ fontSize: 13, color: '#4A2A52', textDecoration: 'line-through' }}>${p.price.toFixed(2)}</span>
+                            <span className={bebas.className} style={{ fontSize: 26, color: glow }}>{formatMoney(p.discountPrice, store.currencySuffix)}</span>
+                            <span className={workSans.className} style={{ fontSize: 13, color: '#4A2A52', textDecoration: 'line-through' }}>{formatMoney(p.price, store.currencySuffix)}</span>
                           </div>
                         ) : (
-                          <span className={bebas.className} style={{ fontSize: 26, color: glow }}>${p.price.toFixed(2)}</span>
+                          <span className={bebas.className} style={{ fontSize: 26, color: glow }}>{formatMoney(p.price, store.currencySuffix)}</span>
                         )}
                       </div>
                       <button className={`kg-add ${workSans.className}`} style={{ fontSize: 13, background: glow }} onClick={() => addToCart(p)}>Add +</button>
@@ -243,53 +260,33 @@ export default function KoreanGrilleTemplate({ data }: { data: StorefrontData })
           </div>
         </section>
 
-        {/* Cart sidebar */}
-        {cartOpen && (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 100 }}>
-            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.78)' }} onClick={() => setCartOpen(false)} />
-            <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 360, background: '#0D0810', borderLeft: '1px solid #2E1A32', animation: 'cartSlide 0.28s ease', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ padding: '20px 24px', borderBottom: '1px solid #2E1A32', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <h3 className={bebas.className} style={{ fontSize: 26, color: '#F0D0F8', letterSpacing: '0.04em' }}>YOUR ORDER</h3>
-                <button onClick={() => setCartOpen(false)} style={{ background: 'none', border: 'none', color: '#7A5A82', cursor: 'pointer' }}><X size={20} /></button>
-              </div>
-              <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
-                {cart.length === 0 ? (
-                  <p className={workSans.className} style={{ color: '#4A2A52', textAlign: 'center', marginTop: 48, lineHeight: 1.8 }}>Fire up the grill!<br />Add something to your order.</p>
-                ) : cart.map((item) => (
-                  <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #1E102A' }}>
-                    <div style={{ flex: 1 }}>
-                      <p className={workSans.className} style={{ color: '#F0D0F8', fontWeight: 600, fontSize: 14 }}>{item.name}</p>
-                      <p className={workSans.className} style={{ color: '#7A5A82', fontSize: 13 }}>${(item.price * item.qty).toFixed(2)}</p>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <button onClick={() => changeQty(item.id, -1)} style={{ background: '#2E1A32', border: 'none', color: '#E91E8C', width: 26, height: 26, borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Minus size={12} /></button>
-                      <span className={workSans.className} style={{ color: '#F0D0F8', fontWeight: 700, fontSize: 14, minWidth: 16, textAlign: 'center' }}>{item.qty}</span>
-                      <button onClick={() => changeQty(item.id, 1)} style={{ background: '#2E1A32', border: 'none', color: '#E91E8C', width: 26, height: 26, borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={12} /></button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {cart.length > 0 && (
-                <div style={{ padding: '20px 24px', borderTop: '1px solid #2E1A32' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                    <span className={workSans.className} style={{ color: '#7A5A82', fontWeight: 700 }}>Total</span>
-                    <span className={bebas.className} style={{ color: '#E91E8C', fontSize: 24 }}>${total.toFixed(2)}</span>
-                  </div>
-                  <a href={waHref} target="_blank" rel="noopener noreferrer" style={{ display: 'block', background: 'linear-gradient(135deg, #E91E8C, #9C27B0)', color: 'white', borderRadius: 8, padding: '14px', textAlign: 'center', fontFamily: workSans.style.fontFamily, fontWeight: 700, fontSize: 15, letterSpacing: '0.06em', textDecoration: 'none', boxShadow: '0 8px 28px #E91E8C44' }}>
-                    ORDER VIA WHATSAPP
-                  </a>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        <ProductOptionsDialog
+          product={optionsFor}
+          currencySuffix={store.currencySuffix}
+          accent="#E91E8C"
+          onClose={() => setOptionsFor(null)}
+          onConfirm={(selection, qty) => {
+            if (optionsFor) setCart((prev) => addLine(prev, optionsFor, qty, selection));
+            setOptionsFor(null);
+          }}
+        />
+        <CheckoutDrawer
+          open={cartOpen}
+          onClose={() => setCartOpen(false)}
+          storeSlug={store.slug}
+          cart={cart}
+          currencySuffix={store.currencySuffix}
+          onChangeQty={(key, delta) => setCart((prev) => changeLineQty(prev, key, delta))}
+          onRemove={(key) => setCart((prev) => removeLine(prev, key))}
+          onOrderPlaced={() => setCart([])}
+        />
 
         {/* Bottom bar */}
         {itemCount > 0 && !cartOpen && (
           <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 40, padding: '0 24px 20px' }}>
             <button onClick={() => setCartOpen(true)} className={workSans.className} style={{ width: '100%', maxWidth: 600, margin: '0 auto', display: 'flex', background: 'linear-gradient(135deg, #E91E8C, #9C27B0)', border: 'none', borderRadius: 10, padding: '15px 24px', cursor: 'pointer', alignItems: 'center', justifyContent: 'space-between', animation: 'magentaGlow 2s ease infinite' }}>
               <span style={{ color: 'white', fontWeight: 700, fontSize: 14 }}>{itemCount} item{itemCount !== 1 ? 's' : ''}</span>
-              <span style={{ color: 'white', fontWeight: 700, fontSize: 15 }}>View Order · ${total.toFixed(2)}</span>
+              <span style={{ color: 'white', fontWeight: 700, fontSize: 15 }}>View Order · {formatMoney(total, store.currencySuffix)}</span>
             </button>
           </div>
         )}

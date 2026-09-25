@@ -3,23 +3,31 @@ import type { CuisinePreset } from '@/lib/data/cuisine-presets';
 interface DeliveryTrustStripProps {
   preset: CuisinePreset;
   deliveryInfo: string | null;
+  /** Preview showcase only: the delivery-time and rating claims are illustrative. */
+  demo?: boolean;
 }
 
-const TRUST_ITEMS = [
+// Illustrative claims (delivery time, rating) no real store has backed — preview only.
+const DEMO_ITEMS = [
   { icon: '🚚', label: 'Fast Delivery', sub: '30–45 min' },
   { icon: '⭐', label: 'Top Rated', sub: '4.9 · 200+ reviews' },
+];
+
+const TRUST_ITEMS = [
   { icon: '🔒', label: 'Secure Order', sub: 'Safe checkout' },
   { icon: '🍽️', label: 'Fresh Daily', sub: 'Made to order' },
 ];
 
-export default function DeliveryTrustStrip({ preset, deliveryInfo }: DeliveryTrustStripProps) {
+export default function DeliveryTrustStrip({ preset, deliveryInfo, demo }: DeliveryTrustStripProps) {
   const primary = preset.primary;
   const heading = '#0D102B';
   const body = '#6B6B78';
 
-  const items = deliveryInfo
-    ? [{ icon: '🚚', label: 'Delivery', sub: deliveryInfo }, ...TRUST_ITEMS.slice(1)]
-    : TRUST_ITEMS;
+  const items = [
+    ...(deliveryInfo ? [{ icon: '🚚', label: 'Delivery', sub: deliveryInfo }] : demo ? DEMO_ITEMS.slice(0, 1) : []),
+    ...(demo ? DEMO_ITEMS.slice(1) : []),
+    ...TRUST_ITEMS,
+  ];
 
   return (
     <section

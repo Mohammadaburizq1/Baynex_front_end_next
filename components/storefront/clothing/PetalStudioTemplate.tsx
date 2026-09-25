@@ -1,4 +1,5 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
 import { useEffect, useRef, useState } from 'react';
 import { Playfair_Display, Nunito_Sans } from 'next/font/google';
@@ -7,11 +8,11 @@ import type { ClothingTemplateContent } from '@/lib/types/clothing-template-cont
 import { parseNavLinks, parseSocialLinks } from '@/lib/utils/clothing-content';
 import CheckoutDrawer from '@/components/storefront/restaurant-default/CheckoutDrawer';
 import { readCartDraft, clearCartDraft } from '@/lib/utils/cart-draft';
-
-interface CartItem {
-  product: PublicProduct;
-  qty: number;
-}
+import {
+  addLine, cartCount as countOf, changeQty as changeLineQty, needsOptions, removeLine, restoreFromDraft,
+  type CartLine,
+} from '@/lib/utils/cart-lines';
+import { ProductOptionsDialog } from '@/components/storefront/shared/ProductOptionsDialog';
 
 const playfair = Playfair_Display({ subsets: ['latin'], weight: ['400','500','600','700'], style: ['normal','italic'] });
 const nunito = Nunito_Sans({ subsets: ['latin'], weight: ['300','400','500','600','700'] });
@@ -31,10 +32,6 @@ const BLOBS = Array.from({ length: 6 }, (_, i) => ({
 const CATEGORIES_DEFAULT = ['All Pieces', 'Dresses', 'Tops', 'Accessories', 'New In'];
 
 const FALLBACK_HERO = 'https://images.unsplash.com/photo-1529139574466-a303027614a4?auto=format&fit=crop&w=700&q=80';
-
-const CURRENCY_SYMBOLS: Record<string, string> = {
-  USD: '$', EUR: '€', GBP: '£', SAR: 'SR ', AED: 'AED ', KWD: 'KD ', QAR: 'QR ', BHD: 'BD ',
-};
 
 const hexToRgba = (hex: string, alpha: number) => {
   const c = hex.replace('#', '');
@@ -68,9 +65,7 @@ export default function PetalStudioTemplate({
   const rose = store.primaryColor || DEFAULT_ROSE;
   const C = { cream: CREAM, blush: BLUSH, rose, dark: DARK, mid: MID, light: LIGHT };
 
-  const currencySymbol = CURRENCY_SYMBOLS[store.currencyCode] ?? (store.currencySuffix ? store.currencySuffix + ' ' : '$');
-  const formatPrice = (price: number) =>
-    `${currencySymbol}${price % 1 === 0 ? price : price.toFixed(2)}`;
+  const formatPrice = (price: number) => formatMoney(price, store.currencyCode);
 
   const ticker = store.deliveryInfo || `  ${content.tickerText}  •  `;
 
@@ -78,7 +73,7 @@ export default function PetalStudioTemplate({
 
   // Unique categories from products for filter tabs
   const uniqueCategories = ['All Pieces', ...Array.from(new Set(products.map(p => p.category).filter(Boolean)))];
-  const categories = uniqueCategories.length > 1 ? uniqueCategories : CATEGORIES_DEFAULT;
+  const categories = uniqueCategories.length > 1 || !data.demo ? uniqueCategories : CATEGORIES_DEFAULT;
 
   const looks = content.lookbookItems
     .filter(l => l.imageUrl)
@@ -103,7 +98,9 @@ export default function PetalStudioTemplate({
   const [heroVis, setHeroVis] = useState(false);
   const [activeCat, setActiveCat] = useState(0);
   const [tIdx, setTIdx] = useState(0);
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartLine[]>([]);
+  // The product whose variant / add-on choices are being made (null = dialog closed).
+  const [optionsFor, setOptionsFor] = useState<PublicProduct | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
 
   // Filter products by selected category
@@ -112,17 +109,13 @@ export default function PetalStudioTemplate({
     : products.filter(p => p.category === categories[activeCat]);
 
   useEffect(() => { const t = setTimeout(() => setHeroVis(true), 100); return () => clearTimeout(t); }, []);
-  useEffect(() => { const t = setInterval(() => setTIdx(i => (i + 1) % testimonials.length), 5000); return () => clearInterval(t); }, [testimonials.length]);
+  useEffect(() => { const t = setInterval(() => setTIdx(i => (i + 1) % Math.max(testimonials.length, 1)), 5000); return () => clearInterval(t); }, [testimonials.length]);
 
   // Restore a cart saved before a guest was redirected to /customer/login (see CheckoutDrawer).
   useEffect(() => {
     const draft = readCartDraft(store.slug);
     if (!draft || draft.length === 0) return;
-    const restored: CartItem[] = [];
-    for (const d of draft) {
-      const product = products.find(p => String(p.id) === d.productId);
-      if (product) restored.push({ product, qty: d.qty });
-    }
+    const restored = restoreFromDraft(draft, products);
     if (restored.length > 0) {
       setCart(restored);
       setCartOpen(true);
@@ -131,26 +124,25 @@ export default function PetalStudioTemplate({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.slug]);
 
-  const cartCount = cart.reduce((sum, item) => sum + item.qty, 0);
+  const cartCount = countOf(cart);
 
   function addToCart(id: number) {
-    const product = products.find(p => p.id === id);
+    const product = products.find((p) => p.id === id);
     if (!product) return;
-    setCart(prev => {
-      const existing = prev.find(item => item.product.id === id);
-      if (existing) return prev.map(item => item.product.id === id ? { ...item, qty: item.qty + 1 } : item);
-      return [...prev, { product, qty: 1 }];
-    });
+    // A product with variants or add-ons needs the customer to choose first.
+    if (needsOptions(product)) {
+      setOptionsFor(product);
+      return;
+    }
+    setCart((prev) => addLine(prev, product, 1));
   }
 
-  function removeFromCart(id: number) {
-    setCart(prev => prev.filter(item => item.product.id !== id));
+  function removeFromCart(key: string) {
+    setCart((prev) => removeLine(prev, key));
   }
 
-  function changeQty(id: number, delta: number) {
-    setCart(prev =>
-      prev.map(item => item.product.id === id ? { ...item, qty: item.qty + delta } : item)
-        .filter(item => item.qty > 0));
+  function changeQty(key: string, delta: number) {
+    setCart((prev) => changeLineQty(prev, key, delta));
   }
 
   const up = (v: boolean, d = 0): React.CSSProperties => ({
@@ -227,7 +219,7 @@ export default function PetalStudioTemplate({
               {store.description || content.heroDescription}
             </p>
             <div style={{ ...up(heroVis,450),display:'flex',gap:12,flexWrap:'wrap' }}>
-              <a href={wa ? `https://wa.me/${wa}` : '#'} style={{ padding:'14px 32px',background:C.rose,color:'#fff',textDecoration:'none',borderRadius:40,fontSize:13,fontWeight:600,cursor:'pointer',letterSpacing:0.5 }}>
+              <a href={wa ? `https://wa.me/${wa}` : '#products'} style={{ padding:'14px 32px',background:C.rose,color:'#fff',textDecoration:'none',borderRadius:40,fontSize:13,fontWeight:600,cursor:'pointer',letterSpacing:0.5 }}>
                 {content.primaryCta}
               </a>
               <a href="#products" style={{ padding:'14px 32px',border:`1.5px solid ${C.rose}`,color:C.rose,textDecoration:'none',borderRadius:40,fontSize:13,fontWeight:600,cursor:'pointer' }}>
@@ -359,6 +351,8 @@ export default function PetalStudioTemplate({
       </section>
 
       {/* TESTIMONIALS */}
+
+      {testimonials.length > 0 && (<>
       <section style={{ padding:'90px 5%',background:C.light }}>
         <div style={{ maxWidth:1280,margin:'0 auto' }}>
           <div style={{ textAlign:'center',marginBottom:48 }}>
@@ -377,7 +371,11 @@ export default function PetalStudioTemplate({
         </div>
       </section>
 
-      {/* NEWSLETTER */}
+      </>)}
+
+      {/* NEWSLETTER: no subscription backend exists, so the form renders in the showcase only */}
+
+      {data.demo && (<>
       <section style={{ background:C.blush,padding:'80px 5%' }}>
         <div style={{ maxWidth:600,margin:'0 auto',textAlign:'center' }}>
           <p style={{ fontSize:11,letterSpacing:3,textTransform:'uppercase',color:C.rose,marginBottom:12,fontWeight:600 }}>{content.newsletterEyebrow}</p>
@@ -389,6 +387,8 @@ export default function PetalStudioTemplate({
           </div>
         </div>
       </section>
+
+      </>)}
 
       {/* FOOTER */}
       <footer style={{ background:C.dark,padding:'48px 5%' }}>
@@ -407,6 +407,16 @@ export default function PetalStudioTemplate({
         </div>
       </footer>
 
+      <ProductOptionsDialog
+        product={optionsFor}
+        currencySuffix={store.currencySuffix}
+        accent={store.primaryColor || '#111827'}
+        onClose={() => setOptionsFor(null)}
+        onConfirm={(selection, qty) => {
+          if (optionsFor) setCart((prev) => addLine(prev, optionsFor, qty, selection));
+          setOptionsFor(null);
+        }}
+      />
       <CheckoutDrawer
         open={cartOpen}
         onClose={() => setCartOpen(false)}

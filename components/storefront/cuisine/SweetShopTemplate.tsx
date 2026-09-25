@@ -1,14 +1,20 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Fraunces, Quicksand } from 'next/font/google';
-import type { StorefrontData } from '@/lib/types/store';
-import { ShoppingBag, X, Heart } from 'lucide-react';
+import type { StorefrontData, PublicProduct } from '@/lib/types/store';
+import { ShoppingBag, Heart } from 'lucide-react';
+import CheckoutDrawer from '@/components/storefront/restaurant-default/CheckoutDrawer';
+import { ProductOptionsDialog } from '@/components/storefront/shared/ProductOptionsDialog';
+import { readCartDraft, clearCartDraft } from '@/lib/utils/cart-draft';
+import {
+  addLine, cartCount as countOf, cartSubtotal, changeQty as changeLineQty, needsOptions, removeLine, restoreFromDraft,
+  type CartLine,
+} from '@/lib/utils/cart-lines';
 
 const fraunces = Fraunces({ subsets: ['latin'], weight: ['300', '400', '700'], style: ['normal', 'italic'] });
 const quicksand = Quicksand({ subsets: ['latin'], weight: ['400', '500', '600', '700'] });
-
-type CartItem = { id: number; name: string; price: number; qty: number };
 
 const CATEGORIES = ['All', 'Cakes', 'Pastries', 'Drinks', 'Seasonal'];
 
@@ -26,36 +32,46 @@ const CARD_ACCENT = ['#F9A8D4', '#C4B5FD', '#FDE68A', '#6EE7B7', '#93C5FD'];
 
 export default function SweetShopTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  // Real stores filter by their own categories; the fixed list is showcase-only (it matched nothing real).
+  const categories = data.demo ? CATEGORIES : ['All', ...Array.from(new Set(products.map(p => p.category).filter(Boolean)))];
   const tc = data.templateContent;
   const [activeCategory, setActiveCategory] = useState('All');
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartLine[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [wishlist, setWishlist] = useState<number[]>([]);
+  // The product whose variant / add-on choices are being made (null = dialog closed).
+  const [optionsFor, setOptionsFor] = useState<PublicProduct | null>(null);
+
+  // Restore a cart saved before a guest was redirected to /customer/login (see CheckoutDrawer).
+  useEffect(() => {
+    const draft = readCartDraft(store.slug);
+    if (!draft || draft.length === 0) return;
+    const restored = restoreFromDraft(draft, products);
+    if (restored.length > 0) {
+      setCart(restored);
+      setCartOpen(true);
+    }
+    clearCartDraft(store.slug);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.slug]);
 
   const filtered =
     activeCategory === 'All' ? products : products.filter((p) => p.category === activeCategory);
 
-  const addToCart = (p: (typeof products)[0]) => {
-    setCart((prev) => {
-      const exists = prev.find((c) => c.id === p.id);
-      if (exists) return prev.map((c) => (c.id === p.id ? { ...c, qty: c.qty + 1 } : c));
-      return [...prev, { id: p.id, name: p.name, price: p.discountPrice ?? p.price, qty: 1 }];
-    });
+  const addToCart = (p: PublicProduct) => {
+    // A product with variants or add-ons needs the customer to choose first.
+    if (needsOptions(p)) {
+      setOptionsFor(p);
+      return;
+    }
+    setCart((prev) => addLine(prev, p, 1));
   };
-
-  const removeOne = (id: number) =>
-    setCart((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, qty: c.qty - 1 } : c)).filter((c) => c.qty > 0)
-    );
 
   const toggleWishlist = (id: number) =>
     setWishlist((prev) => (prev.includes(id) ? prev.filter((w) => w !== id) : [...prev, id]));
 
-  const total = cart.reduce((sum, c) => sum + c.price * c.qty, 0);
-  const itemCount = cart.reduce((sum, c) => sum + c.qty, 0);
-
-  const waMsg = `Hi! I'd like to order: ${cart.map((c) => `${c.qty}x ${c.name}`).join(', ')}. Total: $${total.toFixed(2)}`;
-  const waHref = `https://wa.me/${(store.whatsappNumber ?? '').replace(/\D/g, '')}?text=${encodeURIComponent(waMsg)}`;
+  const total = cartSubtotal(cart);
+  const itemCount = countOf(cart);
 
   return (
     <>
@@ -385,7 +401,7 @@ export default function SweetShopTemplate({ data }: { data: StorefrontData }) {
                 Our Menu
               </h2>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {CATEGORIES.map((cat) => (
+                {categories.map((cat) => (
                   <button
                     key={cat}
                     className={`ss-tab${activeCategory === cat ? ' active' : ''} ${quicksand.className}`}
@@ -534,7 +550,7 @@ export default function SweetShopTemplate({ data }: { data: StorefrontData }) {
                                 className={fraunces.className}
                                 style={{ fontSize: 22, fontWeight: 700, color: '#EC4899' }}
                               >
-                                ${p.discountPrice.toFixed(2)}
+                                {formatMoney(p.discountPrice, store.currencySuffix)}
                               </span>
                               <span
                                 className={quicksand.className}
@@ -544,7 +560,7 @@ export default function SweetShopTemplate({ data }: { data: StorefrontData }) {
                                   textDecoration: 'line-through',
                                 }}
                               >
-                                ${p.price.toFixed(2)}
+                                {formatMoney(p.price, store.currencySuffix)}
                               </span>
                             </div>
                           ) : (
@@ -552,7 +568,7 @@ export default function SweetShopTemplate({ data }: { data: StorefrontData }) {
                               className={fraunces.className}
                               style={{ fontSize: 22, fontWeight: 700, color: '#EC4899' }}
                             >
-                              ${p.price.toFixed(2)}
+                              {formatMoney(p.price, store.currencySuffix)}
                             </span>
                           )}
                         </div>
@@ -572,155 +588,26 @@ export default function SweetShopTemplate({ data }: { data: StorefrontData }) {
           </div>
         </section>
 
-        {/* Cart sidebar */}
-        {cartOpen && (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 100 }}>
-            <div
-              style={{ position: 'absolute', inset: 0, background: 'rgba(61,43,31,0.44)' }}
-              onClick={() => setCartOpen(false)}
-            />
-            <div
-              style={{
-                position: 'absolute',
-                top: 0,
-                right: 0,
-                bottom: 0,
-                width: 360,
-                background: '#FFF8F0',
-                borderLeft: '1px solid #FBCFE8',
-                animation: 'cartIn 0.28s ease',
-                display: 'flex',
-                flexDirection: 'column',
-              }}
-            >
-              <div
-                style={{
-                  padding: '20px 24px',
-                  borderBottom: '1px solid #FBCFE8',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                }}
-              >
-                <h3
-                  className={fraunces.className}
-                  style={{ fontSize: 24, color: '#3D2B1F', fontStyle: 'italic' }}
-                >
-                  Your Cart
-                </h3>
-                <button
-                  onClick={() => setCartOpen(false)}
-                  style={{ background: 'none', border: 'none', color: '#C084A8', cursor: 'pointer' }}
-                >
-                  <X size={20} />
-                </button>
-              </div>
-              <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
-                {cart.length === 0 ? (
-                  <p
-                    className={quicksand.className}
-                    style={{
-                      color: '#C084A8',
-                      textAlign: 'center',
-                      marginTop: 48,
-                      lineHeight: 1.8,
-                      fontSize: 16,
-                    }}
-                  >
-                    Your cart is empty.
-                    <br />
-                    Add a treat!
-                  </p>
-                ) : (
-                  cart.map((item) => (
-                    <div
-                      key={item.id}
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        padding: '12px 0',
-                        borderBottom: '1px solid #FBCFE8',
-                      }}
-                    >
-                      <div>
-                        <p
-                          className={quicksand.className}
-                          style={{ color: '#3D2B1F', fontWeight: 700, fontSize: 15 }}
-                        >
-                          {item.name}
-                        </p>
-                        <p
-                          className={quicksand.className}
-                          style={{ color: '#C084A8', fontSize: 13 }}
-                        >
-                          x{item.qty} · ${(item.price * item.qty).toFixed(2)}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => removeOne(item.id)}
-                        style={{
-                          background: '#FBCFE8',
-                          border: 'none',
-                          color: '#EC4899',
-                          width: 28,
-                          height: 28,
-                          borderRadius: '50%',
-                          cursor: 'pointer',
-                          fontSize: 16,
-                          fontWeight: 700,
-                          lineHeight: 1,
-                        }}
-                      >
-                        −
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-              {cart.length > 0 && (
-                <div style={{ padding: '20px 24px', borderTop: '1px solid #FBCFE8' }}>
-                  <div
-                    style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}
-                  >
-                    <span
-                      className={quicksand.className}
-                      style={{ color: '#9C6B82', fontWeight: 700 }}
-                    >
-                      Total
-                    </span>
-                    <span
-                      className={fraunces.className}
-                      style={{ color: '#EC4899', fontSize: 22, fontWeight: 700 }}
-                    >
-                      ${total.toFixed(2)}
-                    </span>
-                  </div>
-                  <a
-                    href={waHref}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      display: 'block',
-                      background: 'linear-gradient(135deg, #EC4899, #A855F7)',
-                      color: 'white',
-                      borderRadius: 100,
-                      padding: '14px',
-                      textAlign: 'center',
-                      fontFamily: quicksand.style.fontFamily,
-                      fontWeight: 700,
-                      fontSize: 15,
-                      textDecoration: 'none',
-                      boxShadow: '0 8px 28px rgba(236,72,153,0.32)',
-                    }}
-                  >
-                    Order via WhatsApp
-                  </a>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        <ProductOptionsDialog
+          product={optionsFor}
+          currencySuffix={store.currencySuffix}
+          accent="#EC4899"
+          onClose={() => setOptionsFor(null)}
+          onConfirm={(selection, qty) => {
+            if (optionsFor) setCart((prev) => addLine(prev, optionsFor, qty, selection));
+            setOptionsFor(null);
+          }}
+        />
+        <CheckoutDrawer
+          open={cartOpen}
+          onClose={() => setCartOpen(false)}
+          storeSlug={store.slug}
+          cart={cart}
+          currencySuffix={store.currencySuffix}
+          onChangeQty={(key, delta) => setCart((prev) => changeLineQty(prev, key, delta))}
+          onRemove={(key) => setCart((prev) => removeLine(prev, key))}
+          onOrderPlaced={() => setCart([])}
+        />
 
         {/* Bottom cart bar */}
         {itemCount > 0 && !cartOpen && (
@@ -755,7 +642,7 @@ export default function SweetShopTemplate({ data }: { data: StorefrontData }) {
                   {itemCount} item{itemCount !== 1 ? 's' : ''}
                 </span>
                 <span style={{ color: 'white', fontWeight: 700, fontSize: 16 }}>
-                  View Cart · ${total.toFixed(2)}
+                  View Cart · {formatMoney(total, store.currencySuffix)}
                 </span>
               </button>
             </div>

@@ -1,20 +1,21 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import type { StorefrontData, PublicProduct } from '@/lib/types/store';
 import { ShoppingBag, Plus, Minus } from 'lucide-react';
 import { Syne } from 'next/font/google';
 import { DM_Sans } from 'next/font/google';
+import CheckoutDrawer from '@/components/storefront/restaurant-default/CheckoutDrawer';
+import { ProductOptionsDialog } from '@/components/storefront/shared/ProductOptionsDialog';
+import { readCartDraft, clearCartDraft } from '@/lib/utils/cart-draft';
+import {
+  addLine, cartCount as countOf, cartSubtotal, changeQty as changeLineQty, needsOptions, removeLine, restoreFromDraft,
+  type CartLine,
+} from '@/lib/utils/cart-lines';
 
 const syne = Syne({ subsets: ['latin'], weight: ['400', '600', '700', '800'], display: 'swap' });
 const dmSans = DM_Sans({ subsets: ['latin'], weight: ['400', '500'], display: 'swap' });
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface CartItem {
-  product: PublicProduct;
-  qty: number;
-}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -41,7 +42,7 @@ function FeaturedCard({
   currencySuffix: string;
   onAdd: (id: number) => void;
 }) {
-  const displayPrice = (product.discountPrice ?? product.price).toFixed(2);
+  const displayPrice = formatMoney(product.discountPrice ?? product.price, currencySuffix);
 
   return (
     <div
@@ -122,7 +123,7 @@ function ProductCard({
   currencySuffix: string;
   onAdd: (id: number) => void;
 }) {
-  const displayPrice = (product.discountPrice ?? product.price).toFixed(2);
+  const displayPrice = formatMoney(product.discountPrice ?? product.price, currencySuffix);
   const hasDiscount = product.discountPrice !== null;
 
   return (
@@ -179,12 +180,9 @@ function ProductCard({
                 className={`ml-1 text-[11px] line-through ${dmSans.className}`}
                 style={{ color: C.muted }}
               >
-                {product.price.toFixed(2)}
+                {formatMoney(product.price, currencySuffix)}
               </span>
             )}
-            <span className={`ml-0.5 text-[10px] ${dmSans.className}`} style={{ color: C.muted }}>
-              {' '}{currencySuffix}
-            </span>
           </div>
 
           <button
@@ -207,26 +205,37 @@ export default function RetroGrooveTemplate({ data }: { data: StorefrontData }) 
   const { store, products } = data;
   const tc = data.templateContent;
 
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [cartOpen, setCartOpen] = useState(false);
+  // The product whose variant / add-on choices are being made (null = dialog closed).
+  const [optionsFor, setOptionsFor] = useState<PublicProduct | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
 
-  const cartCount = cart.reduce((s, i) => s + i.qty, 0);
-  const cartTotal = cart.reduce(
-    (s, i) => s + (i.product.discountPrice ?? i.product.price) * i.qty,
-    0
-  );
+  // Restore a cart saved before a guest was redirected to /customer/login (see CheckoutDrawer).
+  useEffect(() => {
+    const draft = readCartDraft(store.slug);
+    if (!draft || draft.length === 0) return;
+    const restored = restoreFromDraft(draft, products);
+    if (restored.length > 0) {
+      setCart(restored);
+      setCartOpen(true);
+    }
+    clearCartDraft(store.slug);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.slug]);
+
+  const cartCount = countOf(cart);
+  const cartTotal = cartSubtotal(cart);
 
   function addToCart(productId: number) {
     const product = products.find((p) => p.id === productId);
     if (!product) return;
-    setCart((prev) => {
-      const existing = prev.find((i) => i.product.id === productId);
-      if (existing)
-        return prev.map((i) =>
-          i.product.id === productId ? { ...i, qty: i.qty + 1 } : i
-        );
-      return [...prev, { product, qty: 1 }];
-    });
+    // A product with variants or add-ons needs the customer to choose first.
+    if (needsOptions(product)) {
+      setOptionsFor(product);
+      return;
+    }
+    setCart((prev) => addLine(prev, product, 1));
   }
 
   const categories = useMemo(() => {
@@ -292,6 +301,7 @@ export default function RetroGrooveTemplate({ data }: { data: StorefrontData }) 
         </div>
 
         <button
+          onClick={() => setCartOpen(true)}
           className="relative w-10 h-10 flex items-center justify-center rounded-full cursor-pointer flex-shrink-0"
           style={{ background: C.surface, border: `1.5px solid ${C.border}` }}
           aria-label={`Cart, ${cartCount} item${cartCount !== 1 ? 's' : ''}`}
@@ -522,11 +532,12 @@ export default function RetroGrooveTemplate({ data }: { data: StorefrontData }) 
               className={`text-[12px] ${dmSans.className}`}
               style={{ color: 'rgba(253,248,240,0.55)' }}
             >
-              {cartTotal.toFixed(2)} {store.currencySuffix}
+              {formatMoney(cartTotal, store.currencySuffix)}
             </p>
           </div>
 
           <button
+            onClick={() => setCartOpen(true)}
             className={`rounded-full px-5 py-2.5 font-bold text-sm cursor-pointer flex-shrink-0 ${syne.className}`}
             style={{ background: C.accent, color: '#fff' }}
             aria-label="Proceed to checkout"
@@ -535,6 +546,27 @@ export default function RetroGrooveTemplate({ data }: { data: StorefrontData }) 
           </button>
         </div>
       )}
+
+      <ProductOptionsDialog
+        product={optionsFor}
+        currencySuffix={store.currencySuffix}
+        accent={C.accent}
+        onClose={() => setOptionsFor(null)}
+        onConfirm={(selection, qty) => {
+          if (optionsFor) setCart((prev) => addLine(prev, optionsFor, qty, selection));
+          setOptionsFor(null);
+        }}
+      />
+      <CheckoutDrawer
+        open={cartOpen}
+        onClose={() => setCartOpen(false)}
+        storeSlug={store.slug}
+        cart={cart}
+        currencySuffix={store.currencySuffix}
+        onChangeQty={(key, delta) => setCart((prev) => changeLineQty(prev, key, delta))}
+        onRemove={(key) => setCart((prev) => removeLine(prev, key))}
+        onOrderPlaced={() => setCart([])}
+      />
     </div>
   );
 }

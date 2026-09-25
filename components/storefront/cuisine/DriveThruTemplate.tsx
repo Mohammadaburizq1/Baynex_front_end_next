@@ -1,18 +1,19 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import type { StorefrontData, PublicProduct } from '@/lib/types/store';
 import { Plus, UtensilsCrossed } from 'lucide-react';
 import { Roboto } from 'next/font/google';
+import CheckoutDrawer from '@/components/storefront/restaurant-default/CheckoutDrawer';
+import { ProductOptionsDialog } from '@/components/storefront/shared/ProductOptionsDialog';
+import { readCartDraft, clearCartDraft } from '@/lib/utils/cart-draft';
+import {
+  addLine, cartCount as countOf, cartSubtotal, changeQty as changeLineQty, needsOptions, removeLine, restoreFromDraft,
+  type CartLine,
+} from '@/lib/utils/cart-lines';
 
 const roboto = Roboto({ subsets: ['latin'], weight: ['400', '700', '800', '900'], display: 'swap' });
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface CartItem {
-  product: PublicProduct;
-  qty: number;
-}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -34,7 +35,7 @@ function ProductCard({
   currencySuffix: string;
   onAdd: () => void;
 }) {
-  const displayPrice = `${(product.discountPrice ?? product.price).toFixed(2)} ${currencySuffix}`;
+  const displayPrice = formatMoney((product.discountPrice ?? product.price), currencySuffix);
 
   return (
     <div
@@ -99,40 +100,39 @@ export default function DriveThruTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
   const tc = data.templateContent;
 
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [cartOpen, setCartOpen] = useState(false);
+  // The product whose variant / add-on choices are being made (null = dialog closed).
+  const [optionsFor, setOptionsFor] = useState<PublicProduct | null>(null);
+
+  // Restore a cart saved before a guest was redirected to /customer/login (see CheckoutDrawer).
+  useEffect(() => {
+    const draft = readCartDraft(store.slug);
+    if (!draft || draft.length === 0) return;
+    const restored = restoreFromDraft(draft, products);
+    if (restored.length > 0) {
+      setCart(restored);
+      setCartOpen(true);
+    }
+    clearCartDraft(store.slug);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.slug]);
 
   const availableProducts = useMemo(
     () => products.filter((p) => p.available),
     [products],
   );
 
-  const cartCount = cart.reduce((s, i) => s + i.qty, 0);
-
-  const cartTotal = cart.reduce((sum, item) => {
-    return sum + (item.product.discountPrice ?? item.product.price) * item.qty;
-  }, 0);
+  const cartCount = countOf(cart);
+  const cartTotal = cartSubtotal(cart);
 
   const addToCart = (product: PublicProduct) => {
-    setCart((prev) => {
-      const existing = prev.find((i) => i.product.id === product.id);
-      if (existing) return prev.map((i) => i.product.id === product.id ? { ...i, qty: i.qty + 1 } : i);
-      return [...prev, { product, qty: 1 }];
-    });
-  };
-
-  const handleCheckout = () => {
-    if (!store.whatsappNumber || cart.length === 0) return;
-    const lines = cart
-      .map(
-        (item) =>
-          `• ${item.product.name} ×${item.qty} — ${((item.product.discountPrice ?? item.product.price) * item.qty).toFixed(2)} ${store.currencySuffix}`,
-      )
-      .join('\n');
-    const msg = `Hello ${store.shopName}!\n\nMy order:\n${lines}\n\nTotal: ${cartTotal.toFixed(2)} ${store.currencySuffix}`;
-    window.open(
-      `https://wa.me/${store.whatsappNumber.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`,
-      '_blank',
-    );
+    // A product with variants or add-ons needs the customer to choose first.
+    if (needsOptions(product)) {
+      setOptionsFor(product);
+      return;
+    }
+    setCart((prev) => addLine(prev, product, 1));
   };
 
   return (
@@ -214,7 +214,7 @@ export default function DriveThruTemplate({ data }: { data: StorefrontData }) {
             {cartCount} IN YOUR ORDER
           </p>
           <button
-            onClick={handleCheckout}
+            onClick={() => setCartOpen(true)}
             className={`${roboto.className} font-black w-full cursor-pointer tracking-[1.5px]`}
             style={{
               height: '72px',
@@ -225,10 +225,31 @@ export default function DriveThruTemplate({ data }: { data: StorefrontData }) {
               borderRadius: '8px',
             }}
           >
-            CHECKOUT — {cartTotal.toFixed(2)} {store.currencySuffix}
+            CHECKOUT — {formatMoney(cartTotal, store.currencySuffix)}
           </button>
         </div>
       )}
+
+      <ProductOptionsDialog
+        product={optionsFor}
+        currencySuffix={store.currencySuffix}
+        accent={C.add}
+        onClose={() => setOptionsFor(null)}
+        onConfirm={(selection, qty) => {
+          if (optionsFor) setCart((prev) => addLine(prev, optionsFor, qty, selection));
+          setOptionsFor(null);
+        }}
+      />
+      <CheckoutDrawer
+        open={cartOpen}
+        onClose={() => setCartOpen(false)}
+        storeSlug={store.slug}
+        cart={cart}
+        currencySuffix={store.currencySuffix}
+        onChangeQty={(key, delta) => setCart((prev) => changeLineQty(prev, key, delta))}
+        onRemove={(key) => setCart((prev) => removeLine(prev, key))}
+        onOrderPlaced={() => setCart([])}
+      />
     </div>
   );
 }

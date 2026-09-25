@@ -1,4 +1,5 @@
 'use client';
+import { formatMoneyCompact } from '@/lib/utils';
 
 import { useState, useRef, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
@@ -35,13 +36,7 @@ interface SkylineEstateTemplateProps {
 }
 
 function formatPrice(price: number, currencySuffix: string): string {
-  const formatted =
-    price >= 1_000_000
-      ? `$${(price / 1_000_000).toFixed(1)}M`
-      : price >= 1_000
-      ? `$${(price / 1_000).toFixed(0)}K`
-      : `$${price.toLocaleString()}`;
-  return `${formatted} ${currencySuffix}`;
+  return formatMoneyCompact(price, currencySuffix);
 }
 
 interface SpecChip {
@@ -99,6 +94,8 @@ export default function SkylineEstateTemplate({ data }: SkylineEstateTemplatePro
 
   // ── Real booking (slots fetched when the modal opens) ─────────────────────
   const [slots, setSlots] = useState<ApiAppointmentSlot[]>([]);
+  // A failed load is not the same as "no times published".
+  const [slotsError, setSlotsError] = useState(false);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [selectedSlotId, setSelectedSlotId] = useState('');
   const [bookName, setBookName] = useState('');
@@ -154,9 +151,10 @@ export default function SkylineEstateTemplate({ data }: SkylineEstateTemplatePro
     setBookName(user?.name ?? '');
     setBookPhone(user?.phone ?? '');
     setLoadingSlots(true);
+    setSlotsError(false);
     getUpcomingSlots(store.slug)
       .then(setSlots)
-      .catch(() => setSlots([]))
+      .catch(() => { setSlots([]); setSlotsError(true); })
       .finally(() => setLoadingSlots(false));
   }
 
@@ -216,6 +214,7 @@ export default function SkylineEstateTemplate({ data }: SkylineEstateTemplatePro
         >
           {store.shopName}
         </span>
+        {store.whatsappNumber && (
         <button
           className={`${cinzel.className} font-semibold text-xs px-4 py-2 cursor-pointer transition pointer-events-auto hover:bg-white/5`}
           style={{
@@ -233,6 +232,7 @@ export default function SkylineEstateTemplate({ data }: SkylineEstateTemplatePro
         >
           Private Inquiries
         </button>
+        )}
       </header>
 
       {/* ── Scroll Container ── */}
@@ -437,8 +437,8 @@ export default function SkylineEstateTemplate({ data }: SkylineEstateTemplatePro
             {booked ? (
               <div className="text-center py-2">
                 <CalendarCheck size={32} className="mx-auto mb-2" style={{ color: '#C5A880' }} />
-                <p className={`${cinzel.className} font-semibold text-sm`} style={{ color: '#F5F0E8' }}>Viewing requested!</p>
-                <p className="font-jakarta text-xs mt-1" style={{ color: 'rgba(245,240,232,0.6)' }}>We&apos;ll confirm your slot shortly.</p>
+                <p className={`${cinzel.className} font-semibold text-sm`} style={{ color: '#F5F0E8' }}>Viewing booked!</p>
+                <p className="font-jakarta text-xs mt-1" style={{ color: 'rgba(245,240,232,0.6)' }}>Your slot is confirmed.</p>
               </div>
             ) : (
               <div className="space-y-3 mb-4">
@@ -448,7 +448,9 @@ export default function SkylineEstateTemplate({ data }: SkylineEstateTemplatePro
                 {loadingSlots ? (
                   <p className="font-jakarta text-xs" style={{ color: 'rgba(245,240,232,0.6)' }}>Loading available times…</p>
                 ) : slots.length === 0 ? (
-                  <p className="font-jakarta text-xs" style={{ color: 'rgba(245,240,232,0.6)' }}>No viewing times published yet — reach out on WhatsApp instead.</p>
+                  <p className="font-jakarta text-xs" style={{ color: 'rgba(245,240,232,0.6)' }}>{slotsError
+                ? "Couldn't load available times right now. Please try again later."
+                : `No viewing times published yet${store.whatsappNumber ? ' — reach out on WhatsApp instead' : ''}.`}</p>
                 ) : (
                   <>
                     <select
@@ -493,6 +495,7 @@ export default function SkylineEstateTemplate({ data }: SkylineEstateTemplatePro
               </div>
             )}
 
+            {store.whatsappNumber && (
             <button
               onClick={handleWhatsApp}
               className="w-full h-12 rounded-xl text-white font-jakarta font-bold text-sm flex items-center justify-center gap-2 cursor-pointer hover:opacity-90 transition"
@@ -501,6 +504,7 @@ export default function SkylineEstateTemplate({ data }: SkylineEstateTemplatePro
               <MessageCircle size={18} />
               WhatsApp Us
             </button>
+            )}
           </div>
         </div>
       )}

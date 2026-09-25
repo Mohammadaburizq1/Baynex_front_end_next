@@ -1,4 +1,5 @@
 'use client';
+import { formatMoneyCompact } from '@/lib/utils';
 
 import { useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
@@ -21,13 +22,7 @@ interface OpenHouseTemplateProps {
 }
 
 function formatPrice(price: number, currencySuffix: string): string {
-  const formatted =
-    price >= 1_000_000
-      ? `$${(price / 1_000_000).toFixed(1)}M`
-      : price >= 1_000
-      ? `$${(price / 1_000).toFixed(0)}K`
-      : `$${price.toLocaleString()}`;
-  return `${formatted} ${currencySuffix}`;
+  return formatMoneyCompact(price, currencySuffix);
 }
 
 function parseBeds(description: string): number | null {
@@ -53,6 +48,8 @@ export default function OpenHouseTemplate({ data }: OpenHouseTemplateProps) {
 
   // ── Real booking (slots fetched when the modal opens) ─────────────────────
   const [slots, setSlots] = useState<ApiAppointmentSlot[]>([]);
+  // A failed load is not the same as "no times published".
+  const [slotsError, setSlotsError] = useState(false);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [selectedSlotId, setSelectedSlotId] = useState('');
   const [bookName, setBookName] = useState('');
@@ -81,9 +78,10 @@ export default function OpenHouseTemplate({ data }: OpenHouseTemplateProps) {
     setBookName(user?.name ?? '');
     setBookPhone(user?.phone ?? '');
     setLoadingSlots(true);
+    setSlotsError(false);
     getUpcomingSlots(store.slug)
       .then(setSlots)
-      .catch(() => setSlots([]))
+      .catch(() => { setSlots([]); setSlotsError(true); })
       .finally(() => setLoadingSlots(false));
   }
 
@@ -133,8 +131,6 @@ export default function OpenHouseTemplate({ data }: OpenHouseTemplateProps) {
         `https://wa.me/${store.whatsappNumber.replace(/\D/g, '')}`,
         '_blank'
       );
-    } else {
-      window.location.href = `tel:${store.whatsappNumber}`;
     }
   }
 
@@ -148,6 +144,7 @@ export default function OpenHouseTemplate({ data }: OpenHouseTemplateProps) {
         <span className="font-jakarta font-bold text-xl text-white">
           {store.shopName}
         </span>
+        {store.whatsappNumber && (
         <button
           onClick={handleHeaderContact}
           className="border border-white/30 rounded-full px-4 py-2 font-jakarta font-semibold text-xs text-white flex items-center gap-2 cursor-pointer hover:bg-white/10 transition"
@@ -155,6 +152,7 @@ export default function OpenHouseTemplate({ data }: OpenHouseTemplateProps) {
           <Phone size={14} />
           Contact Us
         </button>
+        )}
       </header>
 
       {/* ── Hero Banner ── */}
@@ -328,8 +326,8 @@ export default function OpenHouseTemplate({ data }: OpenHouseTemplateProps) {
             {booked ? (
               <div className="text-center py-2">
                 <CalendarCheck size={32} className="mx-auto mb-2" color="#16A34A" />
-                <p className="font-jakarta font-bold text-sm text-[#0A192F]">Viewing requested!</p>
-                <p className="font-jakarta text-xs text-[#718096] mt-1">We&apos;ll confirm your slot shortly.</p>
+                <p className="font-jakarta font-bold text-sm text-[#0A192F]">Viewing booked!</p>
+                <p className="font-jakarta text-xs text-[#718096] mt-1">Your slot is confirmed.</p>
               </div>
             ) : (
               <div className="space-y-3 mb-4">
@@ -339,7 +337,9 @@ export default function OpenHouseTemplate({ data }: OpenHouseTemplateProps) {
                 {loadingSlots ? (
                   <p className="font-jakarta text-xs text-[#718096]">Loading available times…</p>
                 ) : slots.length === 0 ? (
-                  <p className="font-jakarta text-xs text-[#718096]">No viewing times published yet — reach out on WhatsApp instead.</p>
+                  <p className="font-jakarta text-xs text-[#718096]">{slotsError
+                ? "Couldn't load available times right now. Please try again later."
+                : `No viewing times published yet${store.whatsappNumber ? ' — reach out on WhatsApp instead' : ''}.`}</p>
                 ) : (
                   <>
                     <select
@@ -384,6 +384,7 @@ export default function OpenHouseTemplate({ data }: OpenHouseTemplateProps) {
               </div>
             )}
 
+            {store.whatsappNumber && (
             <button
               onClick={handleWhatsApp}
               className="w-full h-12 rounded-xl text-white font-jakarta font-bold text-sm flex items-center justify-center gap-2 cursor-pointer hover:opacity-90 transition"
@@ -392,6 +393,7 @@ export default function OpenHouseTemplate({ data }: OpenHouseTemplateProps) {
               <MessageCircle size={18} />
               WhatsApp Us
             </button>
+            )}
           </div>
         </div>
       )}

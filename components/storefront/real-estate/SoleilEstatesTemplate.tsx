@@ -1,4 +1,5 @@
 'use client';
+import { formatMoneyCompact } from '@/lib/utils';
 
 import { useState, useEffect, useRef } from 'react';
 import { Playfair_Display, Raleway } from 'next/font/google';
@@ -11,12 +12,6 @@ import {
 
 const playfair = Playfair_Display({ subsets: ['latin'], weight: ['400', '600', '700'], style: ['normal', 'italic'] });
 const raleway = Raleway({ subsets: ['latin'], weight: ['300', '400', '500', '600', '700'] });
-
-function formatPrice(p: number): string {
-  if (p >= 1_000_000) return `$${(p / 1_000_000).toFixed(1)}M`;
-  if (p >= 1_000) return `$${Math.round(p / 1_000)}K`;
-  return `$${p.toLocaleString()}`;
-}
 
 function parseSpecs(desc: string) {
   return { specs: desc.split(' · ').slice(0, 3) };
@@ -83,6 +78,7 @@ const TESTIMONIALS = [
 
 export default function SoleilEstatesTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const formatPrice = (p: number) => formatMoneyCompact(p, store.currencyCode);
   const tc = data.templateContent;
   const [category, setCategory] = useState('All');
   const [navSolid, setNavSolid] = useState(false);
@@ -113,7 +109,9 @@ export default function SoleilEstatesTemplate({ data }: { data: StorefrontData }
   }, []);
 
   const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
-  const waBase = `https://wa.me/${(store.whatsappNumber ?? '').replace(/\D/g, '')}`;
+  const waDigits = (store.whatsappNumber ?? '').replace(/\D/g, '');
+  // No number, no WhatsApp CTAs: a bare wa.me link opens WhatsApp with no recipient.
+  const waBase = waDigits ? `https://wa.me/${waDigits}` : null;
   const categories = ['All', ...Array.from(new Set(products.map(p => p.category)))];
   const filtered = category === 'All' ? products : products.filter(p => p.category === category);
 
@@ -1092,7 +1090,9 @@ export default function SoleilEstatesTemplate({ data }: { data: StorefrontData }
             {[['About','sl-about'],['Services','sl-services'],['Properties','sl-properties'],['Contact','sl-contact']].map(([l,id]) => (
               <button key={id} className="sl-nav-link" onClick={() => scrollTo(id)}>{l}</button>
             ))}
+            {waBase && (
             <button className="sl-nav-cta" onClick={() => window.open(waBase,'_blank')}>Enquire</button>
+            )}
           </div>
         </div>
       </nav>
@@ -1128,6 +1128,7 @@ export default function SoleilEstatesTemplate({ data }: { data: StorefrontData }
       </section>
 
       {/* ── STATS ── */}
+      {data.demo && (<>
       <div className="sl-stats" ref={statsRef}>
         <div className="sl-stats-inner">
           {[
@@ -1145,6 +1146,7 @@ export default function SoleilEstatesTemplate({ data }: { data: StorefrontData }
           ))}
         </div>
       </div>
+      </>)}
 
       {/* ── ABOUT ── */}
       <div id="sl-about">
@@ -1158,10 +1160,12 @@ export default function SoleilEstatesTemplate({ data }: { data: StorefrontData }
               <div className="sl-about-img-accent">
                 <img src="https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?auto=format&fit=crop&w=400&q=80" alt="Property" />
               </div>
+              {data.demo && (
               <div className="sl-about-badge">
                 <div className={`sl-badge-num ${playfair.className}`}>24+</div>
                 <div className="sl-badge-label">Years of<br/>Excellence</div>
               </div>
+              )}
             </div>
             <div style={fadeRight(aboutVis, 100)}>
               <div className="sl-eyebrow">About Us</div>
@@ -1234,9 +1238,11 @@ export default function SoleilEstatesTemplate({ data }: { data: StorefrontData }
                     <div className="sl-prop-specs">
                       {specs.map((s, si) => <span key={si} className="sl-prop-spec"><SpecIcon label={s} />{s}</span>)}
                     </div>
+                    {waBase && (
                     <a className="sl-prop-wa" href={`${waBase}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noopener noreferrer">
                       Enquire via WhatsApp
                     </a>
+                    )}
                   </div>
                 </div>
               );
@@ -1246,6 +1252,7 @@ export default function SoleilEstatesTemplate({ data }: { data: StorefrontData }
       </div>
 
       {/* ── TEAM ── */}
+      {data.demo && (<>
       <div className="sl-team-band" ref={teamRef}>
         <div className="sl-wrap">
           <div style={fadeUp(teamVis)}>
@@ -1266,17 +1273,21 @@ export default function SoleilEstatesTemplate({ data }: { data: StorefrontData }
                     <Star size={12} color="var(--gold)" />
                     <span>{a.sales} sales completed</span>
                   </div>
+                  {waBase && (
                   <a className="sl-agent-wa" href={`${waBase}?text=${encodeURIComponent(`Hello, I'd like to speak with ${a.name}.`)}`} target="_blank" rel="noopener noreferrer">
                     Get in touch <ArrowRight size={12} />
                   </a>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         </div>
       </div>
+      </>)}
 
       {/* ── TESTIMONIALS ── */}
+      {data.demo && (<>
       <div className="sl-testimonials-band" ref={testimonialsRef}>
         <div className="sl-testimonials-inner">
           <div style={fadeUp(testimonialsVis)}>
@@ -1302,6 +1313,7 @@ export default function SoleilEstatesTemplate({ data }: { data: StorefrontData }
           </div>
         </div>
       </div>
+      </>)}
 
       {/* ── CTA ── */}
       <div id="sl-contact" className="sl-cta-band" ref={ctaRef}>
@@ -1315,10 +1327,12 @@ export default function SoleilEstatesTemplate({ data }: { data: StorefrontData }
             </p>
           </div>
           <div className="sl-cta-right" style={fadeRight(ctaVis, 100)}>
+            {waBase && (
             <a className="sl-cta-wa" href={waBase} target="_blank" rel="noopener noreferrer">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
               Message Us on WhatsApp
             </a>
+            )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div className="sl-cta-detail"><MapPin size={14} style={{ color: 'rgba(212,168,83,0.5)' }} />City Centre Office</div>
               {(tc?.openingHours || store.openingHours) && <div className="sl-cta-detail"><Clock size={14} style={{ color: 'rgba(212,168,83,0.5)' }} />{tc?.openingHours || store.openingHours}</div>}

@@ -46,18 +46,6 @@ export default function FloatingFoodCard({
 
       {/* Info */}
       <div className="flex-1 min-w-0">
-        {/* Rating */}
-        <div className="flex items-center gap-1 mb-1">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill={primary}>
-            <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
-          </svg>
-          <span
-            style={{ color: heading, fontWeight: 800, fontSize: 12 }}
-            className="font-sans"
-          >
-            5.0
-          </span>
-        </div>
         <div
           style={{ color: heading, fontWeight: 800, fontSize: 14 }}
           className="font-sans truncate"

@@ -1,4 +1,5 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
 import { useState, useMemo, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
@@ -77,6 +78,8 @@ function BookingModal({
   const { user, isAuthenticated } = useCustomerAuth();
 
   const [slots, setSlots] = useState<ApiAppointmentSlot[]>([]);
+  // A failed load is not the same as "no times published".
+  const [slotsError, setSlotsError] = useState(false);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [selectedSlotId, setSelectedSlotId] = useState('');
   const [bookName, setBookName] = useState('');
@@ -93,10 +96,11 @@ function BookingModal({
     setBookName(user?.name ?? '');
     setBookPhone(user?.phone ?? '');
     setLoadingSlots(true);
+    setSlotsError(false);
     let cancelled = false;
     getUpcomingSlots(storeSlug)
       .then((s) => { if (!cancelled) setSlots(s); })
-      .catch(() => { if (!cancelled) setSlots([]); })
+      .catch(() => { if (!cancelled) { setSlots([]); setSlotsError(true); } })
       .finally(() => { if (!cancelled) setLoadingSlots(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -114,14 +118,14 @@ function BookingModal({
     if (!whatsappNumber) return;
     const lines = selected.map(
       (p) =>
-        `• ${p.name} — ${(p.discountPrice ?? p.price).toLocaleString()} ${currencySuffix}`,
+        `• ${p.name} — ${formatMoney((p.discountPrice ?? p.price), currencySuffix)}`,
     );
     const message = [
       `Hi, I'd like to book the following services at ${shopName}:`,
       '',
       ...lines,
       '',
-      `Total: ${total.toLocaleString()} ${currencySuffix}`,
+      `Total: ${formatMoney(total, currencySuffix)}`,
     ].join('\n');
     openWhatsApp(whatsappNumber, message);
   }
@@ -149,7 +153,7 @@ function BookingModal({
         customerName: bookName.trim(),
         customerPhone: bookPhone.trim(),
         notes: selected.length > 0
-          ? `Requested: ${selected.map((p) => p.name).join(', ')} (${total.toLocaleString()} ${currencySuffix})`
+          ? `Requested: ${selected.map((p) => p.name).join(', ')} (${formatMoney(total, currencySuffix)})`
           : undefined,
       });
       setBooked(true);
@@ -205,7 +209,7 @@ function BookingModal({
                 className="font-jakarta font-bold text-sm whitespace-nowrap"
                 style={{ color: C.ink }}
               >
-                {(p.discountPrice ?? p.price).toLocaleString()} {currencySuffix}
+                {formatMoney((p.discountPrice ?? p.price), currencySuffix)}
               </span>
             </div>
           ))}
@@ -230,7 +234,7 @@ function BookingModal({
             className="font-jakarta font-bold text-lg"
             style={{ color: C.ink }}
           >
-            {total.toLocaleString()} {currencySuffix}
+            {formatMoney(total, currencySuffix)}
           </span>
         </div>
 
@@ -238,8 +242,8 @@ function BookingModal({
         {booked ? (
           <div className="text-center py-3 mt-4">
             <CalendarCheck size={28} className="mx-auto mb-2" style={{ color: C.accentDark }} />
-            <p className={`${cormorant.className} font-semibold text-base`} style={{ color: C.ink }}>Appointment requested!</p>
-            <p className="font-jakarta text-xs mt-1" style={{ color: C.muted }}>We&apos;ll confirm your slot shortly.</p>
+            <p className={`${cormorant.className} font-semibold text-base`} style={{ color: C.ink }}>Appointment booked!</p>
+            <p className="font-jakarta text-xs mt-1" style={{ color: C.muted }}>Your slot is confirmed.</p>
           </div>
         ) : (
           <div className="flex flex-col gap-2 mt-4">
@@ -249,7 +253,9 @@ function BookingModal({
             {loadingSlots ? (
               <p className="font-jakarta text-xs" style={{ color: C.muted }}>Loading available times…</p>
             ) : slots.length === 0 ? (
-              <p className="font-jakarta text-xs" style={{ color: C.muted }}>No appointment times published yet — reach out on WhatsApp instead.</p>
+              <p className="font-jakarta text-xs" style={{ color: C.muted }}>{slotsError
+                ? "Couldn't load available times right now. Please try again later."
+                : `No appointment times published yet${whatsappNumber ? ' — reach out on WhatsApp instead' : ''}.`}</p>
             ) : (
               <>
                 <select
@@ -357,7 +363,7 @@ function ServiceCard({
         </div>
         <div className="flex items-center gap-3 flex-shrink-0">
           <span className="font-jakarta font-bold text-base" style={{ color: C.ink }}>
-            {displayPrice.toLocaleString()} {currencySuffix}
+            {formatMoney(displayPrice, currencySuffix)}
           </span>
           <ChevronDown
             size={20}

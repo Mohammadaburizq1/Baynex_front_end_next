@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
+    "verify-template-contract": "node verify-template-contract.mjs",
     "verify-backend-shapes": "node verify-backend-shapes.mjs"
   },
   "dependencies": {

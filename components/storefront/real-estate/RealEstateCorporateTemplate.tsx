@@ -1,4 +1,5 @@
 'use client';
+import { formatMoneyCompact } from '@/lib/utils';
 
 import { useState, useEffect, useRef } from 'react';
 import { Cormorant_Garamond, Outfit } from 'next/font/google';
@@ -15,12 +16,6 @@ const cormorant = Cormorant_Garamond({
   style: ['normal', 'italic'],
 });
 const outfit = Outfit({ subsets: ['latin'], weight: ['300', '400', '500', '600', '700'] });
-
-function formatPrice(p: number): string {
-  if (p >= 1_000_000) return `$${(p / 1_000_000).toFixed(1)}M`;
-  if (p >= 1_000) return `$${Math.round(p / 1_000)}K`;
-  return `$${p.toLocaleString()}`;
-}
 
 function parseSpecs(desc: string) {
   const parts = desc.split(' · ');
@@ -93,6 +88,7 @@ const WHY = [
 
 export default function RealEstateCorporateTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const formatPrice = (p: number) => formatMoneyCompact(p, store.currencyCode);
   const tc = data.templateContent;
   const [category, setCategory] = useState('All');
   const [navSolid, setNavSolid] = useState(false);
@@ -118,7 +114,9 @@ export default function RealEstateCorporateTemplate({ data }: { data: Storefront
   }, []);
 
   const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
-  const waBase = `https://wa.me/${(store.whatsappNumber ?? '').replace(/\D/g, '')}`;
+  const waDigits = (store.whatsappNumber ?? '').replace(/\D/g, '');
+  // No number, no WhatsApp CTAs: a bare wa.me link opens WhatsApp with no recipient.
+  const waBase = waDigits ? `https://wa.me/${waDigits}` : null;
   const categories = ['All', ...Array.from(new Set(products.map(p => p.category)))];
   const filtered = category === 'All' ? products : products.filter(p => p.category === category);
 
@@ -1060,9 +1058,11 @@ export default function RealEstateCorporateTemplate({ data }: { data: Storefront
                 {label}
               </button>
             ))}
+            {waBase && (
             <button className="rc-nav-cta" onClick={() => window.open(waBase, '_blank')}>
               Get in Touch
             </button>
+            )}
           </div>
         </div>
       </nav>
@@ -1085,6 +1085,7 @@ export default function RealEstateCorporateTemplate({ data }: { data: Storefront
               About Us
             </button>
           </div>
+          {data.demo && (
           <div className="rc-hero-mini-stats">
             {[['500+', 'Properties'], ['25yr', 'Experience'], ['$2B+', 'In Sales'], ['98%', 'Satisfaction']].map(([num, label]) => (
               <div key={label}>
@@ -1093,6 +1094,7 @@ export default function RealEstateCorporateTemplate({ data }: { data: Storefront
               </div>
             ))}
           </div>
+          )}
         </div>
         <div className="rc-hero-image">
           <img
@@ -1107,6 +1109,7 @@ export default function RealEstateCorporateTemplate({ data }: { data: Storefront
       </section>
 
       {/* ─── STATS ─── */}
+      {data.demo && (<>
       <div className="rc-stats-band" ref={statsRef}>
         <div className="rc-stats-inner">
           {[
@@ -1126,6 +1129,7 @@ export default function RealEstateCorporateTemplate({ data }: { data: Storefront
           ))}
         </div>
       </div>
+      </>)}
 
       {/* ─── ABOUT ─── */}
       <div id="rc-about" className="rc-about-band" ref={aboutRef}>
@@ -1148,6 +1152,7 @@ export default function RealEstateCorporateTemplate({ data }: { data: Storefront
             <p>
               Our success is built on relationships — not transactions. Every client receives dedicated, specialist guidance and the benefit of our deep local network.
             </p>
+            {data.demo && (
             <div className="rc-about-highlights">
               {[
                 ['500+', 'Active Listings'],
@@ -1161,6 +1166,7 @@ export default function RealEstateCorporateTemplate({ data }: { data: Storefront
                 </div>
               ))}
             </div>
+            )}
             <button className="rc-text-link" onClick={() => scrollTo('rc-contact')}>
               Work With Us <ChevronRight size={13} />
             </button>
@@ -1193,6 +1199,7 @@ export default function RealEstateCorporateTemplate({ data }: { data: Storefront
       </section>
 
       {/* ─── TEAM ─── */}
+      {data.demo && (<>
       <section id="rc-team" style={{ background: 'var(--warm)' }}>
         <div className="rc-section" ref={teamRef}>
           <div style={show(teamVis)}>
@@ -1224,6 +1231,7 @@ export default function RealEstateCorporateTemplate({ data }: { data: Storefront
                       <div className="rc-agent-sl">Years</div>
                     </div>
                   </div>
+                  {waBase && (
                   <a
                     className="rc-agent-wa"
                     href={`${waBase}?text=${encodeURIComponent(`Hello, I'd like to speak with ${a.name} at ${store.shopName}.`)}`}
@@ -1232,12 +1240,14 @@ export default function RealEstateCorporateTemplate({ data }: { data: Storefront
                   >
                     Contact <ChevronRight size={12} />
                   </a>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         </div>
       </section>
+      </>)}
 
       {/* ─── PROPERTIES ─── */}
       <div id="rc-properties" className="rc-props-band" ref={propsRef}>
@@ -1279,6 +1289,7 @@ export default function RealEstateCorporateTemplate({ data }: { data: Storefront
                         </span>
                       ))}
                     </div>
+                    {waBase && (
                     <a
                       className="rc-prop-wa"
                       href={`${waBase}?text=${encodeURIComponent(msg)}`}
@@ -1287,6 +1298,7 @@ export default function RealEstateCorporateTemplate({ data }: { data: Storefront
                     >
                       Enquire via WhatsApp
                     </a>
+                    )}
                   </div>
                 </div>
               );
@@ -1296,6 +1308,7 @@ export default function RealEstateCorporateTemplate({ data }: { data: Storefront
       </div>
 
       {/* ─── TESTIMONIALS ─── */}
+      {data.demo && (<>
       <div className="rc-test-band" ref={testRef}>
         <div className="rc-test-inner">
           <div style={show(testVis)}>
@@ -1323,6 +1336,7 @@ export default function RealEstateCorporateTemplate({ data }: { data: Storefront
           </div>
         </div>
       </div>
+      </>)}
 
       {/* ─── WHY US ─── */}
       <section id="rc-why">
@@ -1365,12 +1379,14 @@ export default function RealEstateCorporateTemplate({ data }: { data: Storefront
             <p className="rc-cta-body">
               Whether you're buying, selling, renting, or exploring investment opportunities — our team is here to provide expert, no-pressure guidance from day one.
             </p>
+            {waBase && (
             <a className="rc-cta-wa" href={waBase} target="_blank" rel="noopener noreferrer">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
               </svg>
               Message Us on WhatsApp
             </a>
+            )}
             <div className="rc-cta-details">
               {(tc?.openingHours || store.openingHours) && (
                 <div className="rc-cta-detail">

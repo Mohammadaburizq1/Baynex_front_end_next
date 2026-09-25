@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Search, Plus, Pencil, Trash2, ShoppingBag } from 'lucide-react';
 import { Header } from '@/components/dashboard/Header';
 import { SectionAccessGate } from '@/components/dashboard/SectionAccessGate';
@@ -13,6 +14,8 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
 import { useStore } from '@/contexts/StoreContext';
 import { loadStoreCategories } from '@/lib/utils/store-scoped-data';
+import { categoryPath, flattenCategories } from '@/lib/utils/category-tree';
+import { getCategories, type ApiCategory } from '@/lib/api/categories';
 import {
   formatCurrency,
   PRODUCT_STATUS_MAP,
@@ -21,6 +24,7 @@ import {
 } from '@/lib/utils';
 import type { Product, ProductStatus } from '@/lib/types';
 import { apiProductToProduct, type ApiProduct } from '@/lib/api/products';
+import { dashboardPath } from '@/lib/utils/dashboard-path';
 
 // ── Form state ─────────────────────────────────────────────────────────────────
 
@@ -30,6 +34,7 @@ interface ProductForm {
   categoryId: string;
   price: string;
   comparePrice: string;
+  sku: string;
   stock: string;
   status: ProductStatus;
   featured: boolean;
@@ -41,6 +46,7 @@ const EMPTY_FORM: ProductForm = {
   categoryId: '',
   price: '',
   comparePrice: '',
+  sku: '',
   stock: '',
   status: 'active',
   featured: false,
@@ -53,6 +59,7 @@ function productToForm(p: Product): ProductForm {
     categoryId: p.categoryId,
     price: String(p.price),
     comparePrice: p.comparePrice ? String(p.comparePrice) : '',
+    sku: p.sku,
     stock: String(p.stock),
     status: p.status,
     featured: p.featured,
@@ -62,16 +69,38 @@ function productToForm(p: Product): ProductForm {
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function ProductsPage() {
-  const { store, businessType, permissions } = useStore();
+  const { store, businessType, permissions, dashboardSlug } = useStore();
+  const router = useRouter();
   const canEdit = permissions.PRODUCTS === 'EDIT';
   const { success, error: toastError } = useToast();
 
-  const categories = useMemo(
+  // A synced store's categories are the real, per-store ones from the backend (their ids are UUIDs,
+  // which is what ProductRequest.categoryId requires). The built-in presets only stand in while
+  // the store hasn't been synced yet — their ids ("cat-1", …) are not UUIDs and the backend rejects
+  // them.
+  const synced = !store.id.startsWith('local-');
+  const presetCategories = useMemo(
     () => loadStoreCategories(businessType),
     [businessType],
   );
+  const [apiCategories, setApiCategories] = useState<ApiCategory[]>([]);
+  useEffect(() => {
+    if (!synced) return;
+    let cancelled = false;
+    getCategories(store.id)
+      .then(list => { if (!cancelled) setApiCategories(list); })
+      .catch(() => { /* the form still works without a category */ });
+    return () => { cancelled = true; };
+  }, [store.id, synced]);
+
+  const categoryName = (id?: string): string =>
+    synced ? categoryPath(apiCategories, id) : presetCategories.find(c => c.id === id)?.name ?? '';
 
   const [products, setProducts] = useState<Product[]>([]);
+  // Slugs aren't part of the UI Product shape, but an edit must send the existing one back —
+  // otherwise toProductRequest would mint a new random slug on every save and the product's
+  // public URL would change each time it's edited.
+  const [slugs, setSlugs] = useState<Record<string, string>>({});
   const [loadingProducts, setLoadingProducts] = useState(true);
 
   useEffect(() => {
@@ -90,6 +119,7 @@ export default function ProductsPage() {
         const realStoreId = store.id.startsWith('local-') ? undefined : store.id;
         const apiProducts = await getProducts(realStoreId);
         setProducts(apiProducts.map(apiProductToProduct));
+        setSlugs(Object.fromEntries(apiProducts.filter(p => p.slug).map(p => [p.id, p.slug as string])));
       } catch {
         const { loadStoreProducts } = await import('@/lib/utils/store-scoped-data');
         setProducts(loadStoreProducts(store.slug));
@@ -139,6 +169,12 @@ export default function ProductsPage() {
   }
 
   function openEdit(p: Product) {
+    // A synced store's products are edited on the full editor page (pictures, variants, add-ons,
+    // stock). The quick modal below only remains for stores that aren't on the backend yet.
+    if (synced) {
+      router.push(dashboardPath(dashboardSlug, `products/${p.id}`));
+      return;
+    }
     setEditingProduct(p);
     setForm(productToForm(p));
     setFormError('');
@@ -167,40 +203,52 @@ export default function ProductsPage() {
       setFormError('Enter a valid price.');
       return;
     }
+    if (form.comparePrice && !(Number(form.comparePrice) >= 0 && Number(form.comparePrice) < Number(form.price))) {
+      setFormError('The sale price must be lower than the regular price.');
+      return;
+    }
 
     setSaving(true);
     setFormError('');
 
     try {
       const { createProduct, updateProduct } = await import('@/lib/api/products');
-      const categoryObj = categories.find(c => c.id === form.categoryId);
       const payload: Partial<ApiProduct> = {
         name: form.name.trim(),
         description: form.description,
         price: Number(form.price),
         comparePrice: form.comparePrice ? Number(form.comparePrice) : undefined,
+        sku: form.sku.trim() || undefined,
         // Only send a stock value for verticals that track it at all — for real estate/services
         // this stays undefined, so the backend leaves it null ("not tracked") rather than
         // recording a meaningless 0.
         stock: tracksStock ? (Number(form.stock) || 0) : undefined,
-        category: categoryObj?.name ?? form.categoryId,
         categoryId: form.categoryId || undefined,
         status: form.status,
         featured: form.featured,
       };
 
       if (editingProduct) {
-        const updated = await updateProduct(editingProduct.id, store.id, payload);
+        const updated = await updateProduct(editingProduct.id, store.id, { ...payload, slug: slugs[editingProduct.id] });
         setProducts(prev => prev.map(p => p.id === editingProduct.id ? apiProductToProduct(updated) : p));
         success('Product updated successfully.');
       } else {
         const created = await createProduct(store.id, payload);
         setProducts(prev => [apiProductToProduct(created), ...prev]);
-        success('Product added successfully.');
+        if (created.slug) setSlugs(prev => ({ ...prev, [created.id]: created.slug as string }));
+        success('Product added — add pictures and options next.');
+        closeModal();
+        router.push(dashboardPath(dashboardSlug, `products/${created.id}`));
+        setSaving(false);
+        return;
       }
       closeModal();
-    } catch {
-      setFormError('Failed to save product. Please try again.');
+    } catch (e) {
+      // The backend's message is specific and actionable (e.g. "The SKU … is already used by
+      // another product in your store"); only fall back to a generic line when there isn't one.
+      setFormError(e instanceof Error && e.message && !e.message.startsWith('Request failed')
+        ? e.message
+        : 'Failed to save product. Please try again.');
     }
 
     setSaving(false);
@@ -230,10 +278,12 @@ export default function ProductsPage() {
 
   // ── Category / status select options ────────────────────────────────────────
 
-  const categoryOptions = categories.map(c => ({
-    value: c.id,
-    label: c.name,
-  }));
+  const categoryOptions = synced
+    ? flattenCategories(apiCategories).map(r => ({
+        value: r.category.id,
+        label: `${'— '.repeat(r.depth)}${r.category.name}`,
+      }))
+    : presetCategories.map(c => ({ value: c.id, label: c.name }));
 
   const statusOptions: { value: string; label: string }[] = [
     { value: 'active', label: 'Active' },
@@ -329,17 +379,17 @@ export default function ProductsPage() {
                       <p className="font-semibold text-slate-900 text-sm leading-snug truncate">
                         {product.name}
                       </p>
-                      <p className="text-xs text-slate-500 mt-0.5">{product.category}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">{product.category || categoryName(product.categoryId)}</p>
                     </div>
 
                     {/* Price */}
                     <div className="flex items-baseline gap-2">
                       <span className="font-bold text-primary-600 text-sm tabular-nums">
-                        {formatCurrency(product.price)}
+                        {formatCurrency(product.comparePrice ?? product.price, store.currency)}
                       </span>
-                      {product.comparePrice && (
+                      {product.comparePrice != null && (
                         <span className="text-xs text-slate-400 line-through tabular-nums">
-                          {formatCurrency(product.comparePrice)}
+                        {formatCurrency(product.price, store.currency)}
                         </span>
                       )}
                     </div>
@@ -438,6 +488,7 @@ export default function ProductsPage() {
             label="Category"
             options={categoryOptions}
             placeholder="Select a category"
+            hint={synced && apiCategories.length === 0 ? 'No categories yet — add some on the Categories page.' : undefined}
             value={form.categoryId}
             onChange={e => handleFieldChange('categoryId', e.target.value)}
           />
@@ -454,27 +505,39 @@ export default function ProductsPage() {
               onChange={e => handleFieldChange('price', e.target.value)}
             />
             <Input
-              label="Compare-at Price (RM)"
+              label="Sale price (RM)"
               type="number"
               min="0"
               step="0.01"
               placeholder="Optional"
+              hint="Customers pay this instead of the price."
               value={form.comparePrice}
               onChange={e => handleFieldChange('comparePrice', e.target.value)}
             />
           </div>
 
-          {tracksStock && (
+          <div className={tracksStock ? 'grid grid-cols-2 gap-4' : undefined}>
             <Input
-              label="Stock"
-              type="number"
-              min="0"
-              step="1"
-              placeholder="0"
-              value={form.stock}
-              onChange={e => handleFieldChange('stock', e.target.value)}
+              label="SKU"
+              placeholder="Optional, e.g. TSHIRT-BLK-M"
+              hint="Must be unique in your store."
+              maxLength={120}
+              value={form.sku}
+              onChange={e => handleFieldChange('sku', e.target.value)}
             />
-          )}
+            {tracksStock && (
+              <Input
+                label={editingProduct ? 'Stock' : 'Opening stock'}
+                type="number"
+                min="0"
+                step="1"
+                placeholder="0"
+                hint={editingProduct ? undefined : 'Later changes are made from Inventory.'}
+                value={form.stock}
+                onChange={e => handleFieldChange('stock', e.target.value)}
+              />
+            )}
+          </div>
 
           <Select
             label="Status"

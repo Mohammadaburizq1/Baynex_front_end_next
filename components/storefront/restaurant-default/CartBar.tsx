@@ -1,4 +1,5 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
 interface CartBarProps {
   count: number;
@@ -56,7 +57,7 @@ export default function CartBar({ count, total, currencySuffix, primary, onOpen 
           View Cart
         </span>
         <span style={{ color: '#fff', fontWeight: 900, fontSize: 15 }} className="font-sans">
-          {total.toFixed(2)} {currencySuffix}
+          {formatMoney(total, currencySuffix)}
         </span>
       </button>
     </div>

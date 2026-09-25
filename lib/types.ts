@@ -22,6 +22,7 @@ export interface Store {
   address: string;
   currency: string;
   timezone: string;
+  locale?: string;
   status: StoreStatus;
   // Whether the store is accepting orders right now — separate from `status` (published/draft).
   // Local-only preference; the backend has no concept of this yet.
@@ -81,7 +82,10 @@ export type OrderStatus =
   | 'cancelled'
   | 'refunded';
 
-export type PaymentStatus = 'unpaid' | 'paid' | 'refunded' | 'partial';
+// Mirrors the backend's PaymentStatus enum (UNPAID/PENDING/PAID/FAILED/REFUNDED/
+// PARTIALLY_REFUNDED — see lib/api/orders.ts's PAYMENT_STATUS_FROM_BACKEND), independent of both
+// OrderStatus (fulfillment) and PaymentMethod (intent). 'partial' = PARTIALLY_REFUNDED.
+export type PaymentStatus = 'unpaid' | 'pending' | 'paid' | 'failed' | 'refunded' | 'partial';
 export type PaymentMethod = 'cash' | 'card' | 'online' | 'wallet';
 export type FulfillmentType = 'delivery' | 'pickup' | 'dine_in';
 
@@ -93,6 +97,10 @@ export interface OrderItem {
   unitPrice: number;
   totalPrice: number;
   notes?: string;
+  // Copied onto the line when it was bought — they stay true if the variant/add-on is edited later.
+  variantLabel?: string;
+  sku?: string;
+  modifiers?: { groupName: string; optionName: string; priceDelta: number }[];
 }
 
 export interface Order {
@@ -109,6 +117,8 @@ export interface Order {
   discountCode?: string;
   tax: number;
   total: number;
+  /** Null for orders created before currency snapshots were introduced. */
+  currency?: string | null;
   status: OrderStatus;
   paymentStatus: PaymentStatus;
   paymentMethod: PaymentMethod;
@@ -224,7 +234,8 @@ export interface Appointment {
 export interface StatCardData {
   title: string;
   value: string | number;
-  change: number;
+  // Omit when there's no real comparison to show — the card then shows only changeLabel.
+  change?: number;
   changeLabel: string;
   icon: string;
   color: 'indigo' | 'emerald' | 'amber' | 'rose' | 'sky' | 'violet';

@@ -11,11 +11,23 @@ export interface TemplateContentReview {
 }
 
 /**
+ * Version of the TemplateContent shape itself, stored alongside the content so a future field
+ * rename/restructure can detect old saved blobs and upgrade them — see migrateTemplateContent()
+ * in lib/utils/template-content.ts. Bump this whenever the shape changes in a way old data
+ * wouldn't already satisfy.
+ */
+export const CURRENT_TEMPLATE_CONTENT_SCHEMA_VERSION = 1;
+
+/**
  * Universal editable content for every storefront template.
  * All fields are optional — templates fall back to their built-in defaults.
- * Persisted to localStorage keyed by store slug (key: `shoplink_tpl_<slug>`).
+ * Persisted to the backend (store_theme_content table) as draft/published JSON, with a local
+ * live-preview mirror in localStorage — see lib/utils/template-content.ts.
  */
 export interface TemplateContent {
+  /** Schema version this blob was saved under — see CURRENT_TEMPLATE_CONTENT_SCHEMA_VERSION. */
+  schemaVersion?: number;
+
   // ── Navigation ────────────────────────────────────────────────────────
   /** Comma-separated nav links, e.g. "Menu,About,Contact" */
   navLinks?: string;

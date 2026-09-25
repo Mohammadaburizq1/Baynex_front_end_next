@@ -18,7 +18,7 @@ const plusJakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: 'ShopLink — Store',
+  title: 'khanGates — Store',
   description: 'Discover and order from your favourite local stores.',
 };
 

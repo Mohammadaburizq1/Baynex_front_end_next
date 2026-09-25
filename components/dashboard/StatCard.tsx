@@ -23,7 +23,7 @@ const COLOR_CLASSES: Record<StatCardData['color'], { bg: string; icon: string; c
 export function StatCard({ title, value, change, changeLabel, icon, color }: StatCardData) {
   const Icon = ICONS[icon] ?? DollarSign;
   const colors = COLOR_CLASSES[color];
-  const positive = change >= 0;
+  const positive = (change ?? 0) >= 0;
 
   return (
     <div className="bg-white rounded-card border border-surface-200 shadow-card p-5">
@@ -37,14 +37,18 @@ export function StatCard({ title, value, change, changeLabel, icon, color }: Sta
       <p className="text-2xl font-bold text-slate-900 mb-1.5 tabular-nums">{value}</p>
 
       <div className="flex items-center gap-1">
-        {positive
-          ? <TrendingUp size={13} className="text-emerald-500 shrink-0" />
-          : <TrendingDown size={13} className="text-red-500 shrink-0" />
-        }
-        <span className={cn('text-xs font-semibold', positive ? 'text-emerald-600' : 'text-red-600')}>
-          {formatChange(change)}
-        </span>
-        <span className="text-xs text-slate-400">{changeLabel}</span>
+        {change !== undefined && (
+          <>
+            {positive
+              ? <TrendingUp size={13} className="text-emerald-500 shrink-0" />
+              : <TrendingDown size={13} className="text-red-500 shrink-0" />
+            }
+            <span className={cn('text-xs font-semibold', positive ? 'text-emerald-600' : 'text-red-600')}>
+              {formatChange(change)}
+            </span>
+          </>
+        )}
+        <span className="text-xs text-slate-500">{changeLabel}</span>
       </div>
     </div>
   );

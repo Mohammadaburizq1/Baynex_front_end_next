@@ -1,4 +1,5 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
 import { useEffect, useState, useMemo } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
@@ -9,18 +10,20 @@ import { Poppins } from 'next/font/google';
 import { useToast } from '@/components/ui/Toast';
 import { useCustomerAuth } from '@/contexts/CustomerAuthContext';
 import { createOrder, type DeliveryMethod, type PaymentMethod } from '@/lib/api/checkout';
+import { getPublicFulfillment, type ApiDeliveryZone } from '@/lib/api/delivery';
+import { getPublicBusinessHours } from '@/lib/api/business-hours';
 import { validateOfferCode, type DiscountValidationResult } from '@/lib/api/offers';
-import { saveCartDraft, clearCartDraft, readCartDraft } from '@/lib/utils/cart-draft';
+import { clearCartDraft, readCartDraft } from '@/lib/utils/cart-draft';
+import {
+  addLine, cartCount as countOf, cartSubtotal, describeSelection, lineKey, lineTotal, needsOptions, restoreFromDraft,
+  toOrderItems, type CartLine,
+} from '@/lib/utils/cart-lines';
+import { ProductOptionsDialog } from '@/components/storefront/shared/ProductOptionsDialog';
 
 const bungee = Bungee({ subsets: ['latin'], weight: ['400'], display: 'swap' });
 const poppins = Poppins({ subsets: ['latin'], weight: ['700', '800', '900'], display: 'swap' });
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-interface CartItem {
-  product: PublicProduct;
-  qty: number;
-}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -44,7 +47,7 @@ function ProductCard({
   currencySuffix: string;
   onAdd: () => void;
 }) {
-  const displayPrice = `${(product.discountPrice ?? product.price).toFixed(2)} ${currencySuffix}`;
+  const displayPrice = formatMoney((product.discountPrice ?? product.price), currencySuffix);
   const cardBg = idx % 2 === 0 ? C.mustard : C.white;
   const rotation = idx % 2 === 0 ? 'rotate(-0.8deg)' : 'rotate(0.8deg)';
 
@@ -123,7 +126,7 @@ function CheckoutPanel({
   onClose,
   onOrderPlaced,
 }: {
-  cart: CartItem[];
+  cart: CartLine[];
   currencySuffix: string;
   whatsappNumber: string | null;
   shopName: string;
@@ -131,10 +134,8 @@ function CheckoutPanel({
   onClose: () => void;
   onOrderPlaced: () => void;
 }) {
-  const router = useRouter();
-  const pathname = usePathname();
   const { success, error } = useToast();
-  const { user, isAuthenticated } = useCustomerAuth();
+  const { user } = useCustomerAuth();
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -148,6 +149,13 @@ function CheckoutPanel({
   const [applyingPromo, setApplyingPromo] = useState(false);
   const [promoError, setPromoError] = useState<string | null>(null);
   const [appliedDiscount, setAppliedDiscount] = useState<DiscountValidationResult | null>(null);
+  const [zones, setZones] = useState<ApiDeliveryZone[]>([]);
+  const [pickupAvailable, setPickupAvailable] = useState(false);
+  const [freeDeliveryThreshold, setFreeDeliveryThreshold] = useState<number | null>(null);
+  const [deliveryZoneId, setDeliveryZoneId] = useState('');
+  // Same M1-04 pre-check as CheckoutDrawer; the backend still rejects stale or direct requests.
+  const [canAcceptOrders, setCanAcceptOrders] = useState(true);
+  const [availabilityMessage, setAvailabilityMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -156,11 +164,34 @@ function CheckoutPanel({
     setPhone((prev) => prev || user.phone || '');
   }, [user]);
 
-  const subtotal = cart.reduce((sum, item) => {
-    return sum + (item.product.discountPrice ?? item.product.price) * item.qty;
-  }, 0);
+  useEffect(() => {
+    let cancelled = false;
+    getPublicBusinessHours(storeSlug).then(status => {
+      if (cancelled) return;
+      setCanAcceptOrders(status.canAcceptOrders);
+      setAvailabilityMessage(status.canAcceptOrders ? null : status.status === 'CLOSED'
+        ? 'This store is currently closed.'
+        : 'Online ordering is temporarily paused.');
+    }).catch(() => { /* backend enforcement still applies */ });
+    return () => { cancelled = true; };
+  }, [storeSlug]);
+
+  useEffect(() => {
+    getPublicFulfillment(storeSlug).then(config => {
+      setZones(config.zones.filter(z => z.isActive));
+      setPickupAvailable(config.pickupAvailable);
+      setFreeDeliveryThreshold(config.freeDeliveryThreshold ?? null);
+      if (!config.deliveryAvailable && config.pickupAvailable) setDeliveryMethod('PICKUP');
+    }).catch(() => { setZones([]); setPickupAvailable(false); });
+  }, [storeSlug]);
+
+  const subtotal = cartSubtotal(cart);
   const discountAmount = appliedDiscount?.amount ?? 0;
-  const total = Math.max(0, subtotal - discountAmount);
+  const selectedZone = zones.find(zone => zone.id === deliveryZoneId);
+  const deliveryFee = deliveryMethod === 'DELIVERY' && selectedZone
+    && !(freeDeliveryThreshold && freeDeliveryThreshold > 0 && subtotal >= freeDeliveryThreshold)
+    ? selectedZone.deliveryFee : 0;
+  const total = Math.max(0, subtotal - discountAmount + deliveryFee);
 
   async function handleApplyPromo() {
     if (!promoCode.trim()) return;
@@ -180,12 +211,12 @@ function CheckoutPanel({
   const handleWhatsAppOrder = () => {
     if (!whatsappNumber) return;
     const lines = cart
-      .map(
-        (item) =>
-          `• ${item.product.name} ×${item.qty} — ${((item.product.discountPrice ?? item.product.price) * item.qty).toFixed(2)} ${currencySuffix}`,
-      )
+      .map((item) => {
+        const details = describeSelection(item);
+        return `• ${item.product.name}${details.length > 0 ? ` (${details.join(', ')})` : ''} ×${item.qty} — ${formatMoney(lineTotal(item), currencySuffix)}`;
+      })
       .join('\n');
-    const msg = `Hello ${shopName}!\n\nMy order:\n${lines}\n\nTotal: ${total.toFixed(2)} ${currencySuffix}`;
+    const msg = `Hello ${shopName}!\n\nMy order:\n${lines}\n\nTotal: ${formatMoney(total, currencySuffix)}`;
     window.open(
       `https://wa.me/${whatsappNumber.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`,
       '_blank',
@@ -193,17 +224,16 @@ function CheckoutPanel({
   };
 
   const handleOrder = async () => {
-    if (!isAuthenticated) {
-      saveCartDraft(storeSlug, cart.map((item) => ({ productId: String(item.product.id), qty: item.qty })));
-      router.push(`/customer/login?redirect=${encodeURIComponent(pathname)}`);
-      return;
-    }
     if (!name.trim() || !phone.trim()) {
       error('Name and phone are required.');
       return;
     }
     if (deliveryMethod === 'DELIVERY' && !address.trim()) {
       error('Delivery address is required.');
+      return;
+    }
+    if (deliveryMethod === 'DELIVERY' && !deliveryZoneId) {
+      error('Select a delivery zone.');
       return;
     }
 
@@ -216,9 +246,10 @@ function CheckoutPanel({
         customerAddress: address.trim() || undefined,
         deliveryMethod,
         paymentMethod,
-        deliveryFee: 0,
+        deliveryFee,
+        deliveryZoneId: deliveryMethod === 'DELIVERY' ? deliveryZoneId : undefined,
         discountCode: appliedDiscount?.code,
-        items: cart.map((item) => ({ productId: String(item.product.id), quantity: item.qty })),
+        items: toOrderItems(cart),
       });
       setOrderCode(res.orderCode);
       setPromoCode('');
@@ -306,10 +337,11 @@ function CheckoutPanel({
         {/* Items */}
         <div className="flex flex-col gap-2 mb-4 max-h-[40vh] overflow-y-auto">
           {cart.map((item) => {
-            const price = (item.product.discountPrice ?? item.product.price) * item.qty;
+            const price = lineTotal(item);
+            const details = describeSelection(item);
             return (
               <div
-                key={item.product.id}
+                key={lineKey(item)}
                 className="flex items-center justify-between py-2"
                 style={{ borderBottom: '2px solid rgba(17,17,17,0.2)' }}
               >
@@ -319,12 +351,17 @@ function CheckoutPanel({
                 >
                   {item.product.name}
                   {item.qty > 1 ? ` ×${item.qty}` : ''}
+                  {details.length > 0 && (
+                    <span className="block text-xs font-semibold" style={{ color: '#555' }}>
+                      {details.join(' · ')}
+                    </span>
+                  )}
                 </span>
                 <span
                   className={`${poppins.className} font-black text-sm`}
                   style={{ color: C.ketchup }}
                 >
-                  {price.toFixed(2)} {currencySuffix}
+                  {formatMoney(price, currencySuffix)}
                 </span>
               </div>
             );
@@ -361,7 +398,7 @@ function CheckoutPanel({
         )}
         {appliedDiscount && (
           <p className={`${poppins.className} font-bold text-xs mb-2`} style={{ color: '#0A8A3F' }}>
-            &quot;{appliedDiscount.code}&quot; applied: -{discountAmount.toFixed(2)} {currencySuffix}
+            &quot;{appliedDiscount.code}&quot; applied: -{formatMoney(discountAmount, currencySuffix)}
           </p>
         )}
 
@@ -369,7 +406,7 @@ function CheckoutPanel({
         {appliedDiscount && (
           <div className="flex items-center justify-between mb-1">
             <span className={`${poppins.className} font-bold text-sm`} style={{ color: C.black }}>Subtotal</span>
-            <span className={`${poppins.className} font-bold text-sm`} style={{ color: C.black }}>{subtotal.toFixed(2)} {currencySuffix}</span>
+            <span className={`${poppins.className} font-bold text-sm`} style={{ color: C.black }}>{formatMoney(subtotal, currencySuffix)}</span>
           </div>
         )}
         <div className="flex items-center justify-between mb-3">
@@ -377,13 +414,13 @@ function CheckoutPanel({
             TOTAL
           </span>
           <span className={`${bungee.className} text-xl`} style={{ color: C.ketchup }}>
-            {total.toFixed(2)} {currencySuffix}
+            {formatMoney(total, currencySuffix)}
           </span>
         </div>
 
         {/* Delivery / Payment chips */}
         <div className="flex gap-2 mb-3">
-          {(['DELIVERY', 'PICKUP'] as const).map((m) => (
+          {(['DELIVERY', 'PICKUP'] as const).filter(m => m === 'DELIVERY' ? zones.length > 0 : pickupAvailable).map((m) => (
             <button
               key={m}
               onClick={() => setDeliveryMethod(m)}
@@ -414,6 +451,13 @@ function CheckoutPanel({
             </button>
           ))}
         </div>
+
+        {deliveryMethod === 'DELIVERY' && (
+          <select value={deliveryZoneId} onChange={e => setDeliveryZoneId(e.target.value)} className={`${poppins.className} text-sm px-3 py-2 w-full`} style={{ border: '3px solid #111', borderRadius: '10px', background: C.white, color: C.black }}>
+            <option value="">Select delivery zone</option>
+            {zones.map(zone => <option key={zone.id} value={zone.id}>{zone.name} ({formatMoney(zone.deliveryFee, currencySuffix)})</option>)}
+          </select>
+        )}
 
         {/* Contact fields */}
         <div className="flex flex-col gap-2 mb-3">
@@ -449,10 +493,20 @@ function CheckoutPanel({
           )}
         </div>
 
+        {availabilityMessage && (
+
+          <p role="status" className={`${poppins.className} text-sm font-bold mb-2 px-3 py-2`} style={{ background: C.white, border: '3px solid #111', borderRadius: '10px', color: C.black }}>
+
+            {availabilityMessage}
+
+          </p>
+
+        )}
+
         {/* Place Order button */}
         <button
           onClick={handleOrder}
-          disabled={submitting}
+          disabled={submitting || !canAcceptOrders}
           className={`${bungee.className} w-full cursor-pointer`}
           style={{
             height: '64px',
@@ -461,10 +515,10 @@ function CheckoutPanel({
             fontSize: '24px',
             color: C.white,
             borderRadius: '12px',
-            opacity: submitting ? 0.6 : 1,
+            opacity: submitting || !canAcceptOrders ? 0.6 : 1,
           }}
         >
-          {submitting ? '...' : 'PLACE ORDER'}
+          {submitting ? '...' : canAcceptOrders ? 'PLACE ORDER' : 'ORDERING UNAVAILABLE'}
         </button>
 
         {whatsappNumber && (
@@ -489,18 +543,16 @@ export default function StreetFoodPopTemplate({ data }: { data: StorefrontData }
   const { user, isAuthenticated } = useCustomerAuth();
   const pathname = usePathname();
 
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartLine[]>([]);
+  // The product whose variant / add-on choices are being made (null = dialog closed).
+  const [optionsFor, setOptionsFor] = useState<PublicProduct | null>(null);
   const [activeCategory, setActiveCategory] = useState<string>('ALL');
   const [panelOpen, setPanelOpen] = useState(false);
 
   useEffect(() => {
     const draft = readCartDraft(store.slug);
     if (!draft || draft.length === 0) return;
-    const restored: CartItem[] = [];
-    for (const d of draft) {
-      const product = products.find((p) => String(p.id) === d.productId);
-      if (product) restored.push({ product, qty: d.qty });
-    }
+    const restored = restoreFromDraft(draft, products);
     if (restored.length > 0) {
       setCart(restored);
       setPanelOpen(true);
@@ -524,18 +576,17 @@ export default function StreetFoodPopTemplate({ data }: { data: StorefrontData }
     return availableProducts.filter((p) => p.category === activeCategory);
   }, [availableProducts, activeCategory]);
 
-  const cartCount = cart.reduce((s, i) => s + i.qty, 0);
+  const cartCount = countOf(cart);
 
-  const cartTotal = cart.reduce((sum, item) => {
-    return sum + (item.product.discountPrice ?? item.product.price) * item.qty;
-  }, 0);
+  const cartTotal = cartSubtotal(cart);
 
   const addToCart = (product: PublicProduct) => {
-    setCart((prev) => {
-      const existing = prev.find((i) => i.product.id === product.id);
-      if (existing) return prev.map((i) => i.product.id === product.id ? { ...i, qty: i.qty + 1 } : i);
-      return [...prev, { product, qty: 1 }];
-    });
+    // A product with variants or add-ons needs the customer to choose first.
+    if (needsOptions(product)) {
+      setOptionsFor(product);
+      return;
+    }
+    setCart((prev) => addLine(prev, product, 1));
   };
 
   return (
@@ -559,10 +610,10 @@ export default function StreetFoodPopTemplate({ data }: { data: StorefrontData }
           }}
         >
           <span>
-            {tc?.tickerText || '🔥 FREE DELIVERY OVER 20 JOD 🔥 ORDER NOW 🍔 FRESH DAILY 🔥 FREE DELIVERY OVER 20 JOD 🔥 ORDER NOW 🍔 FRESH DAILY 🔥'}{' '}
+            {tc?.tickerText || '🔥 ORDER NOW 🍔 FRESH DAILY 🔥 ORDER NOW 🍔 FRESH DAILY 🔥'}{' '}
           </span>
           <span>
-            {tc?.tickerText || '🔥 FREE DELIVERY OVER 20 JOD 🔥 ORDER NOW 🍔 FRESH DAILY 🔥 FREE DELIVERY OVER 20 JOD 🔥 ORDER NOW 🍔 FRESH DAILY 🔥'}{' '}
+            {tc?.tickerText || '🔥 ORDER NOW 🍔 FRESH DAILY 🔥 ORDER NOW 🍔 FRESH DAILY 🔥'}{' '}
           </span>
         </div>
       </div>
@@ -686,10 +737,21 @@ export default function StreetFoodPopTemplate({ data }: { data: StorefrontData }
             className={`${poppins.className} font-black text-sm`}
             style={{ color: C.black }}
           >
-            {cartCount} items · {cartTotal.toFixed(2)} {store.currencySuffix}
+            {cartCount} items · {formatMoney(cartTotal, store.currencySuffix)}
           </span>
         </button>
       )}
+
+      <ProductOptionsDialog
+        product={optionsFor}
+        currencySuffix={store.currencySuffix}
+        accent={C.ketchup}
+        onClose={() => setOptionsFor(null)}
+        onConfirm={(selection, qty) => {
+          if (optionsFor) setCart((prev) => addLine(prev, optionsFor, qty, selection));
+          setOptionsFor(null);
+        }}
+      />
 
       {/* Checkout panel */}
       {panelOpen && (

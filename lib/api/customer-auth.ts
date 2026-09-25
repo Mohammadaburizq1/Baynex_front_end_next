@@ -8,6 +8,36 @@ export interface CustomerUser {
   phone?: string;
 }
 
+interface CustomerProfileResponse {
+  id: string;
+  fullName: string;
+  email: string | null;
+  phone: string | null;
+}
+
+export interface CustomerOrder {
+  id: string;
+  storeId: string;
+  orderCode: string;
+  customerName: string;
+  customerEmail: string | null;
+  customerPhone: string;
+  customerAddress: string | null;
+  deliveryMethod: 'DELIVERY' | 'PICKUP';
+  paymentMethod: 'CASH' | 'CARD' | 'WHATSAPP_ONLY';
+  paymentStatus: string;
+  status: 'NEW' | 'CONFIRMED' | 'PREPARING' | 'READY' | 'DELIVERED' | 'CANCELLED';
+  subtotal: number;
+  deliveryFee: number;
+  discount: number;
+  discountCode: string | null;
+  total: number;
+  notes: string | null;
+  createdAt: string;
+  currency?: string | null;
+  items: { id: string; productNameSnapshot: string; quantity: number; unitPrice: number; total: number; variantLabel: string | null; sku: string | null; modifiers: { groupName: string; optionName: string; priceDelta: number }[] }[];
+}
+
 interface AuthResponse {
   accessToken: string;
   refreshToken: string;
@@ -29,7 +59,7 @@ interface ApiEnvelope<T> {
 
 export { customerTokenStore };
 
-function mapCustomerUser(raw: AuthResponse['user']): CustomerUser {
+function mapCustomerUser(raw: { id: string; fullName: string; email: string | null; phone: string | null }): CustomerUser {
   return {
     id: raw.id,
     email: raw.email ?? '',
@@ -80,6 +110,27 @@ export async function customerLogin(email: string, password: string): Promise<Cu
 export async function customerMe(): Promise<CustomerUser> {
   const raw = await customerApiRequest<AuthResponse['user']>('/api/public/auth/me');
   return mapCustomerUser(raw);
+}
+
+export async function customerProfile(): Promise<CustomerUser> {
+  const raw = await customerApiRequest<CustomerProfileResponse>('/api/public/customers/me');
+  return mapCustomerUser(raw);
+}
+
+export async function updateCustomerProfile(fullName: string): Promise<CustomerUser> {
+  const raw = await customerApiRequest<CustomerProfileResponse>('/api/public/customers/me', {
+    method: 'PUT',
+    body: JSON.stringify({ fullName }),
+  });
+  return mapCustomerUser(raw);
+}
+
+export async function customerOrders(page = 0): Promise<CustomerOrder[]> {
+  return customerApiRequest<CustomerOrder[]>(`/api/public/customers/me/orders?page=${page}&size=20`);
+}
+
+export async function customerOrder(id: string): Promise<CustomerOrder> {
+  return customerApiRequest<CustomerOrder>(`/api/public/customers/me/orders/${encodeURIComponent(id)}`);
 }
 
 export async function customerLogout(): Promise<void> {

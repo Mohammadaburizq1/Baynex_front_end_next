@@ -1,18 +1,19 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import type { StorefrontData, PublicProduct } from '@/lib/types/store';
 import { ShoppingCart, Coffee, MessageCircle } from 'lucide-react';
 import { Lora } from 'next/font/google';
+import CheckoutDrawer from '@/components/storefront/restaurant-default/CheckoutDrawer';
+import { ProductOptionsDialog } from '@/components/storefront/shared/ProductOptionsDialog';
+import { readCartDraft, clearCartDraft } from '@/lib/utils/cart-draft';
+import {
+  addLine, cartCount as countOf, cartSubtotal, changeQty as changeLineQty, needsOptions, removeLine, restoreFromDraft,
+  type CartLine,
+} from '@/lib/utils/cart-lines';
 
 const lora = Lora({ subsets: ['latin'], weight: ['400', '600'], display: 'swap' });
-
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-interface CartItem {
-  product: PublicProduct;
-  qty: number;
-}
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -40,7 +41,7 @@ function ProductCard({
   currencySuffix: string;
   onAdd: (id: number) => void;
 }) {
-  const displayPrice = `${(product.discountPrice ?? product.price).toFixed(2)} ${currencySuffix}`;
+  const displayPrice = formatMoney((product.discountPrice ?? product.price), currencySuffix);
 
   return (
     <div
@@ -96,26 +97,37 @@ export default function ArtisanTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
 
   // ── Cart state ──
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [cartOpen, setCartOpen] = useState(false);
+  // The product whose variant / add-on choices are being made (null = dialog closed).
+  const [optionsFor, setOptionsFor] = useState<PublicProduct | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
 
-  const cartCount = cart.reduce((s, i) => s + i.qty, 0);
-  const cartTotal = cart.reduce(
-    (s, i) => s + (i.product.discountPrice ?? i.product.price) * i.qty,
-    0
-  );
+  // Restore a cart saved before a guest was redirected to /customer/login (see CheckoutDrawer).
+  useEffect(() => {
+    const draft = readCartDraft(store.slug);
+    if (!draft || draft.length === 0) return;
+    const restored = restoreFromDraft(draft, products);
+    if (restored.length > 0) {
+      setCart(restored);
+      setCartOpen(true);
+    }
+    clearCartDraft(store.slug);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.slug]);
+
+  const cartCount = countOf(cart);
+  const cartTotal = cartSubtotal(cart);
 
   function addToCart(productId: number) {
     const product = products.find((p) => p.id === productId);
     if (!product) return;
-    setCart((prev) => {
-      const existing = prev.find((i) => i.product.id === productId);
-      if (existing)
-        return prev.map((i) =>
-          i.product.id === productId ? { ...i, qty: i.qty + 1 } : i
-        );
-      return [...prev, { product, qty: 1 }];
-    });
+    // A product with variants or add-ons needs the customer to choose first.
+    if (needsOptions(product)) {
+      setOptionsFor(product);
+      return;
+    }
+    setCart((prev) => addLine(prev, product, 1));
   }
 
   // ── Grouped products by category ──
@@ -167,6 +179,7 @@ export default function ArtisanTemplate({ data }: { data: StorefrontData }) {
         </span>
 
         <button
+          onClick={() => setCartOpen(true)}
           className="relative flex items-center justify-center w-10 h-10 cursor-pointer"
           style={{ color: COLORS.ink }}
           aria-label={`Cart, ${cartCount} items`}
@@ -303,9 +316,10 @@ export default function ArtisanTemplate({ data }: { data: StorefrontData }) {
       >
         <span className="font-semibold text-sm" style={{ color: COLORS.ink }}>
           {cartCount} {cartCount === 1 ? 'item' : 'items'} &middot;{' '}
-          {cartTotal.toFixed(2)} {store.currencySuffix}
+          {formatMoney(cartTotal, store.currencySuffix)}
         </span>
         <button
+          onClick={() => setCartOpen(true)}
           className="px-5 py-2.5 rounded-xl text-white font-bold text-sm cursor-pointer hover:opacity-90 transition-opacity"
           style={{ backgroundColor: COLORS.accent }}
           aria-label="Proceed to checkout"
@@ -313,6 +327,27 @@ export default function ArtisanTemplate({ data }: { data: StorefrontData }) {
           Checkout →
         </button>
       </div>
+
+      <ProductOptionsDialog
+        product={optionsFor}
+        currencySuffix={store.currencySuffix}
+        accent={COLORS.accent}
+        onClose={() => setOptionsFor(null)}
+        onConfirm={(selection, qty) => {
+          if (optionsFor) setCart((prev) => addLine(prev, optionsFor, qty, selection));
+          setOptionsFor(null);
+        }}
+      />
+      <CheckoutDrawer
+        open={cartOpen}
+        onClose={() => setCartOpen(false)}
+        storeSlug={store.slug}
+        cart={cart}
+        currencySuffix={store.currencySuffix}
+        onChangeQty={(key, delta) => setCart((prev) => changeLineQty(prev, key, delta))}
+        onRemove={(key) => setCart((prev) => removeLine(prev, key))}
+        onOrderPlaced={() => setCart([])}
+      />
     </div>
   );
 }

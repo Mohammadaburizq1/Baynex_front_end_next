@@ -10,12 +10,31 @@ export function cn(...inputs: ClassValue[]): string {
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 
-export function formatCurrency(amount: number, currency = 'MYR'): string {
-  return new Intl.NumberFormat('en-MY', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 2,
-  }).format(amount);
+export function formatMoney(amount: number, currency: string | null | undefined, locale = 'en'): string {
+  if (!currency) {
+    return new Intl.NumberFormat(locale).format(amount);
+  }
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency,
+    }).format(amount);
+  } catch {
+    // Not an ISO 4217 code (e.g. stale local data): show the amount and the raw label rather
+    // than crash a storefront render or guess a different currency.
+    return `${new Intl.NumberFormat(locale).format(amount)} ${currency}`;
+  }
+}
+
+// Large listing prices (real estate): "JOD 1.3M", "USD 850K" — same currency rule as formatMoney.
+export function formatMoneyCompact(amount: number, currency: string | null | undefined, locale = 'en'): string {
+  if (amount < 1_000) return formatMoney(amount, currency, locale);
+  const compact = new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 }).format(amount);
+  return currency ? `${currency} ${compact}` : compact;
+}
+
+export function formatCurrency(amount: number, currency: string, locale = 'en'): string {
+  return formatMoney(amount, currency, locale);
 }
 
 export function formatDate(dateStr: string, options?: Intl.DateTimeFormatOptions): string {
@@ -69,9 +88,11 @@ export const ORDER_STATUS_MAP: Record<OrderStatus, { label: string; color: strin
 
 export const PAYMENT_STATUS_MAP: Record<PaymentStatus, { label: string; color: string }> = {
   unpaid:   { label: 'Unpaid',   color: 'bg-red-100 text-red-700'       },
+  pending:  { label: 'Pending',  color: 'bg-amber-100 text-amber-700'   },
   paid:     { label: 'Paid',     color: 'bg-emerald-100 text-emerald-700'},
+  failed:   { label: 'Failed',   color: 'bg-red-100 text-red-700'       },
   refunded: { label: 'Refunded', color: 'bg-slate-100 text-slate-600'   },
-  partial:  { label: 'Partial',  color: 'bg-amber-100 text-amber-700'   },
+  partial:  { label: 'Partially refunded', color: 'bg-amber-100 text-amber-700' },
 };
 
 export const STOCK_STATUS_MAP: Record<StockStatus, { label: string; color: string }> = {

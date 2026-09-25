@@ -1,4 +1,5 @@
 'use client';
+import { formatMoneyCompact } from '@/lib/utils';
 
 import { useState, useEffect, useRef } from 'react';
 import { Anton, Barlow } from 'next/font/google';
@@ -11,12 +12,6 @@ import {
 
 const anton = Anton({ subsets: ['latin'], weight: ['400'] });
 const barlow = Barlow({ subsets: ['latin'], weight: ['300', '400', '500', '600', '700'] });
-
-function formatPrice(p: number): string {
-  if (p >= 1_000_000) return `$${(p / 1_000_000).toFixed(1)}M`;
-  if (p >= 1_000) return `$${Math.round(p / 1_000)}K`;
-  return `$${p.toLocaleString()}`;
-}
 
 function parseSpecs(desc: string) {
   return { specs: desc.split(' · ').slice(0, 3) };
@@ -74,7 +69,7 @@ const SERVICES = [
 ];
 
 const WHY = [
-  { Icon: Award, title: 'Top Performer', desc: 'Ranked in the top 1% of agencies nationally by transaction volume.' },
+  { Icon: Award, title: 'Top Performer', desc: 'Every listing is handled end to end by an experienced agent.' },
   { Icon: Shield, title: 'No Hidden Costs', desc: 'Clear, upfront fee structures. No surprises. No exceptions.' },
   { Icon: Clock, title: '7-Day Service', desc: 'The market doesn\'t work 9–5. Neither do we.' },
   { Icon: Users, title: 'Deep Network', desc: 'Two decades of relationships with buyers, developers, and off-market sellers.' },
@@ -82,6 +77,7 @@ const WHY = [
 
 export default function AxiomPropertiesTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  const formatPrice = (p: number) => formatMoneyCompact(p, store.currencyCode);
   const tc = data.templateContent;
   const [category, setCategory] = useState('All');
   const [navSolid, setNavSolid] = useState(false);
@@ -106,7 +102,9 @@ export default function AxiomPropertiesTemplate({ data }: { data: StorefrontData
   }, []);
 
   const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
-  const waBase = `https://wa.me/${(store.whatsappNumber ?? '').replace(/\D/g, '')}`;
+  const waDigits = (store.whatsappNumber ?? '').replace(/\D/g, '');
+  // No number, no WhatsApp CTAs: a bare wa.me link opens WhatsApp with no recipient.
+  const waBase = waDigits ? `https://wa.me/${waDigits}` : null;
   const categories = ['All', ...Array.from(new Set(products.map(p => p.category)))];
   const filtered = category === 'All' ? products : products.filter(p => p.category === category);
 
@@ -994,7 +992,9 @@ export default function AxiomPropertiesTemplate({ data }: { data: StorefrontData
             {[['About','ax-about'],['Services','ax-services'],['Properties','ax-properties'],['Contact','ax-contact']].map(([l,id]) => (
               <button key={id} className="ax-nav-link" onClick={() => scrollTo(id)}>{l}</button>
             ))}
+            {waBase && (
             <button className="ax-nav-cta" onClick={() => window.open(waBase,'_blank')}>Enquire</button>
+            )}
           </div>
         </div>
       </nav>
@@ -1023,6 +1023,7 @@ export default function AxiomPropertiesTemplate({ data }: { data: StorefrontData
         <div className="ax-hero-img-strip">
           <img src="https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?auto=format&fit=crop&w=1400&q=80" alt="Property" />
           <div className="ax-hero-img-overlay" />
+          {data.demo && (
           <div className="ax-hero-stat-pill">
             <div className="ax-hero-stat-item">
               <div className={`ax-hero-stat-n ${anton.className}`}>500+</div>
@@ -1039,10 +1040,12 @@ export default function AxiomPropertiesTemplate({ data }: { data: StorefrontData
               <div className="ax-hero-stat-l">Total Sales</div>
             </div>
           </div>
+          )}
         </div>
       </div>
 
       {/* ── STATS ── */}
+      {data.demo && (<>
       <div className="ax-stats-band" ref={statsRef}>
         <div className="ax-stats-inner">
           {[
@@ -1058,6 +1061,7 @@ export default function AxiomPropertiesTemplate({ data }: { data: StorefrontData
           ))}
         </div>
       </div>
+      </>)}
 
       {/* ── ABOUT ── */}
       <div id="ax-about">
@@ -1065,10 +1069,12 @@ export default function AxiomPropertiesTemplate({ data }: { data: StorefrontData
           <div className="ax-section-tag">About</div>
           <div className="ax-about-grid">
             <div style={revealLeft(aboutVis)}>
+              {data.demo && (<>
               <div className={`ax-about-big-num ${anton.className}`}>22<span>+</span></div>
               <p className="ax-about-statement">
                 Years of closing deals that other agencies couldn't.
               </p>
+              </>)}
             </div>
             <div style={revealRight(aboutVis, 100)}>
               <h2 className={`ax-h2 ${anton.className}`} style={{ marginBottom: 20 }}>WE DON'T WAIT. WE MOVE.</h2>
@@ -1139,9 +1145,11 @@ export default function AxiomPropertiesTemplate({ data }: { data: StorefrontData
                     <div className="ax-prop-specs">
                       {specs.map((s, si) => <span key={si} className="ax-prop-spec"><SpecIcon label={s} />{s}</span>)}
                     </div>
+                    {waBase && (
                     <a className="ax-prop-wa" href={`${waBase}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noopener noreferrer">
                       Enquire Now <ArrowUpRight size={13} />
                     </a>
+                    )}
                   </div>
                 </div>
               );
@@ -1151,6 +1159,7 @@ export default function AxiomPropertiesTemplate({ data }: { data: StorefrontData
       </div>
 
       {/* ── TEAM ── */}
+      {data.demo && (<>
       <div className="ax-team-band" ref={teamRef}>
         <div className="ax-team-inner">
           <div style={reveal(teamVis)}>
@@ -1173,15 +1182,18 @@ export default function AxiomPropertiesTemplate({ data }: { data: StorefrontData
                       <div className="ax-agent-deals-l">Deals Closed</div>
                     </div>
                   </div>
+                  {waBase && (
                   <a className="ax-agent-wa" href={`${waBase}?text=${encodeURIComponent(`Hello, I'd like to connect with ${a.name}.`)}`} target="_blank" rel="noopener noreferrer">
                     Contact <ArrowUpRight size={12} />
                   </a>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         </div>
       </div>
+      </>)}
 
       {/* ── WHY US ── */}
       <div>
@@ -1216,10 +1228,12 @@ export default function AxiomPropertiesTemplate({ data }: { data: StorefrontData
             </p>
           </div>
           <div className="ax-cta-right" style={revealRight(ctaVis, 100)}>
+            {waBase && (
             <a className="ax-cta-wa" href={waBase} target="_blank" rel="noopener noreferrer">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
               Message on WhatsApp
             </a>
+            )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div className="ax-cta-detail"><MapPin size={13} />City Centre Office</div>
               {(tc?.openingHours || store.openingHours) && <div className="ax-cta-detail"><Clock size={13} />{tc?.openingHours || store.openingHours}</div>}

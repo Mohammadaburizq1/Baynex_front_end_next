@@ -60,12 +60,14 @@ async function refreshAccessToken(): Promise<string> {
 
 // ── Core request function ────────────────────────────────────────────────────
 
-export async function apiRequest<T>(
-  path: string,
-  options: RequestInit = {},
-): Promise<T> {
+// Sends the request with the access token, refreshing it once on a 401. Throws on a non-2xx
+// response (using the backend envelope's message when there is one); returns the raw Response.
+async function authorizedFetch(path: string, options: RequestInit = {}): Promise<Response> {
+  // A multipart upload must NOT carry our JSON content type: the browser has to set its own, with
+  // the boundary, or the server can't parse the parts.
+  const isForm = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const buildHeaders = (token: string | null): Record<string, string> => ({
-    'Content-Type': 'application/json',
+    ...(isForm ? {} : { 'Content-Type': 'application/json' }),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.headers as Record<string, string>),
   });
@@ -106,6 +108,14 @@ export async function apiRequest<T>(
     } catch { /* ignore */ }
     throw new Error(message);
   }
+  return res;
+}
+
+export async function apiRequest<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const res = await authorizedFetch(path, options);
 
   // Some endpoints (DELETE, logout) return empty body.
   const text = await res.text();
@@ -113,6 +123,18 @@ export async function apiRequest<T>(
 
   const body: ApiEnvelope<T> = JSON.parse(text);
   return body.data;
+}
+
+// For endpoints that return a file rather than the JSON envelope (e.g. the Reports CSV). The
+// filename comes from the server's Content-Disposition, falling back to the caller's.
+export async function apiDownload(
+  path: string,
+  fallbackFilename: string,
+): Promise<{ blob: Blob; filename: string }> {
+  const res = await authorizedFetch(path);
+  const disposition = res.headers.get('Content-Disposition') ?? '';
+  const match = /filename="?([^";]+)"?/i.exec(disposition);
+  return { blob: await res.blob(), filename: match?.[1] ?? fallbackFilename };
 }
 
 export { API_BASE };

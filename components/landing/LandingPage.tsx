@@ -103,7 +103,7 @@ function Navbar() {
               <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/>
             </svg>
           </div>
-          <span className="font-jakarta font-extrabold text-white text-lg">ShopLink</span>
+          <span className="font-jakarta font-extrabold text-white text-lg">khanGates</span>
         </Link>
 
         <div className="flex-1" />
@@ -153,7 +153,7 @@ function Hero() {
 
           <div className="flex flex-wrap gap-3 mb-10 opacity-0 slide-in-left animate-stagger-4">
             <IndigoBtn href="/onboarding">🚀 Start for Free</IndigoBtn>
-            <SecondaryBtn href="/store/demo-restaurant">▶ View Demo</SecondaryBtn>
+            <SecondaryBtn href="/templates/restaurant-default">▶ View Demo</SecondaryBtn>
             <GhostBtn href="/login">Merchant Login</GhostBtn>
           </div>
 
@@ -199,7 +199,7 @@ function DashboardPreview() {
         <div className="w-3 h-3 rounded-full bg-yellow-400" />
         <div className="w-3 h-3 rounded-full bg-green-400" />
         <div className="flex-1 mx-4 h-5 bg-gray-200 rounded-full text-[10px] flex items-center justify-center text-gray-400 font-mono">
-          shoplink.app/dashboard
+          khanGates.app/dashboard
         </div>
       </div>
 
@@ -365,7 +365,7 @@ function Pricing() {
 }
 
 const FAQ_ITEMS = [
-  { q: 'Do I need a domain or hosting?', a: 'No. Your store is instantly live at a ShopLink URL. You can connect a custom domain anytime from your dashboard.' },
+  { q: 'Do I need a domain or hosting?', a: 'No. Your store is instantly live at a khanGates URL. You can connect a custom domain anytime from your dashboard.' },
   { q: 'How do customers place orders?', a: 'Customers browse your store and tap "Order via WhatsApp". You receive a structured order message directly in your WhatsApp.' },
   { q: 'Can I switch templates later?', a: 'Yes. You can change your store template at any time from the dashboard without losing any of your products or settings.' },
 ];
@@ -405,7 +405,7 @@ function CTABanner() {
           Ready to launch your store?
         </h2>
         <p className="font-jakarta text-white/65 text-base mb-8 max-w-md">
-          Join thousands of merchants selling online with ShopLink. No code, no hassle.
+          Join thousands of merchants selling online with khanGates. No code, no hassle.
         </p>
         <IndigoBtn href="/onboarding">🚀 Start for Free</IndigoBtn>
       </GlassSurface>
@@ -426,7 +426,7 @@ function Footer() {
               <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/>
             </svg>
           </div>
-          <span className="font-jakarta font-extrabold text-white text-lg">ShopLink</span>
+          <span className="font-jakarta font-extrabold text-white text-lg">khanGates</span>
         </div>
         <p className="font-jakarta text-white/50 text-sm mb-6">
           The easiest way to sell online — beautiful storefronts, WhatsApp orders, zero code.
@@ -435,7 +435,7 @@ function Footer() {
           {[
             { label: 'Merchant Login', href: '/login', accent: true },
             { label: 'Start Free', href: '/onboarding' },
-            { label: 'View Demo', href: '/store/demo-restaurant' },
+            { label: 'View Demo', href: '/templates/restaurant-default' },
           ].map((l) => (
             <Link
               key={l.label}
@@ -447,7 +447,7 @@ function Footer() {
             </Link>
           ))}
         </div>
-        <p className="font-jakarta text-white/30 text-xs">© {new Date().getFullYear()} ShopLink. All rights reserved.</p>
+        <p className="font-jakarta text-white/30 text-xs">© {new Date().getFullYear()} khanGates. All rights reserved.</p>
       </div>
     </footer>
   );

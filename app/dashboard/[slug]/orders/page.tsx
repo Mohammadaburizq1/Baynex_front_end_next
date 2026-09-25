@@ -7,38 +7,56 @@ import { Header } from '@/components/dashboard/Header';
 import { SectionAccessGate } from '@/components/dashboard/SectionAccessGate';
 import { Button } from '@/components/ui/Button';
 import { StatusBadge } from '@/components/ui/Badge';
-import { Input } from '@/components/ui/Input';
+import { Input, Select } from '@/components/ui/Input';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
 import { useStore } from '@/contexts/StoreContext';
 import {
-  formatCurrency,
+  formatMoney,
   formatDateTime,
   formatRelativeTime,
   ORDER_STATUS_MAP,
   PAYMENT_STATUS_MAP,
   cn,
 } from '@/lib/utils';
-import type { Order, OrderStatus } from '@/lib/types';
+import type { Order, OrderStatus, PaymentStatus } from '@/lib/types';
 import { apiOrderToOrder } from '@/lib/api/orders';
 
 // ── Status progression map ─────────────────────────────────────────────────────
 
+// Matches the backend's real lifecycle exactly (NEW → CONFIRMED → PREPARING → READY →
+// DELIVERED, or CANCELLED from any of those) — see lib/api/orders.ts's STATUS_TO_BACKEND.
+// 'out_for_delivery' and 'refunded' stay in OrderStatus (lib/types.ts) for the mock-data.ts
+// demo fallback, but must never appear here: the backend rejects them, and this list drives
+// every real status-changing action on this page.
 const STATUS_PROGRESSION: OrderStatus[] = [
   'pending',
   'confirmed',
   'preparing',
   'ready',
-  'out_for_delivery',
   'delivered',
 ];
 
 const STATUS_NEXT_ACTION: Partial<Record<OrderStatus, { label: string; next: OrderStatus }>> = {
-  pending:          { label: 'Confirm Order',   next: 'confirmed'        },
-  confirmed:        { label: 'Start Preparing', next: 'preparing'        },
-  preparing:        { label: 'Mark Ready',      next: 'ready'            },
-  ready:            { label: 'Out for Delivery',next: 'out_for_delivery' },
-  out_for_delivery: { label: 'Mark Delivered',  next: 'delivered'        },
+  pending:   { label: 'Confirm Order',   next: 'confirmed' },
+  confirmed: { label: 'Start Preparing', next: 'preparing' },
+  preparing: { label: 'Mark Ready',      next: 'ready'     },
+  ready:     { label: 'Mark Delivered',  next: 'delivered' },
+};
+
+// ── Payment status ───────────────────────────────────────────────────────────────
+
+// Mirrors OrderService.validatePaymentTransition exactly, so a merchant is never offered a
+// choice the backend will actually reject: REFUNDED is terminal, refunding requires the order to
+// have been PAID (or already PARTIALLY_REFUNDED) first, and everything else can move freely —
+// this is manual bookkeeping a staff member corrects by hand, not a linear fulfillment pipeline.
+const PAYMENT_STATUS_OPTIONS: Record<PaymentStatus, PaymentStatus[]> = {
+  unpaid: ['pending', 'paid', 'failed'],
+  pending: ['unpaid', 'paid', 'failed'],
+  failed: ['unpaid', 'pending', 'paid'],
+  paid: ['refunded', 'partial'],
+  partial: ['paid', 'refunded'],
+  refunded: [],
 };
 
 // ── Tab config ─────────────────────────────────────────────────────────────────
@@ -144,10 +162,12 @@ interface SidePanelProps {
   canEdit: boolean;
   onClose: () => void;
   onStatusChange: (orderId: string, next: OrderStatus) => void;
+  onPaymentStatusChange: (orderId: string, next: PaymentStatus) => void;
   onCancel: (orderId: string) => void;
 }
 
-function OrderDetailPanel({ order, canEdit, onClose, onStatusChange, onCancel }: SidePanelProps) {
+function OrderDetailPanel({ order, canEdit, onClose, onStatusChange, onPaymentStatusChange, onCancel }: SidePanelProps) {
+  const paymentOptions = PAYMENT_STATUS_OPTIONS[order.paymentStatus];
   const nextAction = STATUS_NEXT_ACTION[order.status];
   const isFinal =
     order.status === 'delivered' ||
@@ -236,6 +256,21 @@ function OrderDetailPanel({ order, canEdit, onClose, onStatusChange, onCancel }:
                 label={PAYMENT_STATUS_MAP[order.paymentStatus].label}
               />
             </div>
+            {canEdit && paymentOptions.length > 0 && (
+              <Select
+                aria-label="Change payment status"
+                value=""
+                onChange={e => {
+                  const next = e.target.value as PaymentStatus | '';
+                  if (next) onPaymentStatusChange(order.id, next);
+                }}
+                options={[
+                  { value: '', label: 'Change payment status…' },
+                  ...paymentOptions.map(s => ({ value: s, label: PAYMENT_STATUS_MAP[s].label })),
+                ]}
+                className="mt-3"
+              />
+            )}
           </section>
 
           {/* Order items */}
@@ -253,12 +288,20 @@ function OrderDetailPanel({ order, canEdit, onClose, onStatusChange, onCancel }:
                     <span className="w-5 h-5 rounded bg-surface-100 flex items-center justify-center text-xs font-bold text-slate-600 shrink-0">
                       {item.quantity}
                     </span>
-                    <span className="text-sm text-slate-700 truncate">
-                      {item.productName}
-                    </span>
+                    <div className="min-w-0">
+                      <span className="text-sm text-slate-700 truncate block">
+                        {item.productName}
+                        {item.variantLabel ? ` · ${item.variantLabel}` : ''}
+                      </span>
+                      {item.modifiers && item.modifiers.length > 0 && (
+                        <span className="text-xs text-slate-500 block truncate">
+                          {item.modifiers.map(m => m.optionName).join(', ')}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <span className="text-sm font-medium text-slate-900 tabular-nums shrink-0">
-                    {formatCurrency(item.totalPrice)}
+                    {formatMoney(item.totalPrice, order.currency)}
                   </span>
                 </li>
               ))}
@@ -267,24 +310,27 @@ function OrderDetailPanel({ order, canEdit, onClose, onStatusChange, onCancel }:
             <div className="mt-4 pt-3 border-t border-surface-200 space-y-1.5">
               <div className="flex justify-between text-sm text-slate-600">
                 <span>Subtotal</span>
-                <span className="tabular-nums">{formatCurrency(order.subtotal)}</span>
+                <span className="tabular-nums">{formatMoney(order.subtotal, order.currency)}</span>
               </div>
               {order.deliveryFee > 0 && (
                 <div className="flex justify-between text-sm text-slate-600">
                   <span>Delivery fee</span>
-                  <span className="tabular-nums">{formatCurrency(order.deliveryFee)}</span>
+                <span className="tabular-nums">{formatMoney(order.deliveryFee, order.currency)}</span>
                 </div>
               )}
               {order.discount > 0 && (
                 <div className="flex justify-between text-sm text-emerald-600">
                   <span>Discount</span>
-                  <span className="tabular-nums">−{formatCurrency(order.discount)}</span>
+                <span className="tabular-nums">−{formatMoney(order.discount, order.currency)}</span>
                 </div>
               )}
               <div className="flex justify-between text-sm font-semibold text-slate-900 pt-1.5 border-t border-surface-200">
                 <span>Total</span>
-                <span className="tabular-nums">{formatCurrency(order.total)}</span>
+                <span className="tabular-nums">{formatMoney(order.total, order.currency)}</span>
               </div>
+              {!order.currency && (
+                <p className="text-xs text-slate-400 pt-1">Currency unavailable for legacy order</p>
+              )}
             </div>
           </section>
 
@@ -344,7 +390,7 @@ export default function OrdersPage() {
 function OrdersPageContent() {
   const { store, permissions } = useStore();
   const canEdit = permissions.ORDERS === 'EDIT';
-  const { success } = useToast();
+  const { success, error } = useToast();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -425,35 +471,63 @@ function OrdersPageContent() {
   // ── Handlers ──────────────────────────────────────────────────────────────────
 
   async function handleStatusChange(orderId: string, next: OrderStatus) {
+    const previousStatus = orders.find(o => o.id === orderId)?.status;
+
     // Optimistic update
     setOrders(prev => prev.map(o =>
       o.id === orderId ? { ...o, status: next, updatedAt: new Date().toISOString() } : o,
     ));
-    success(`Order status updated to "${ORDER_STATUS_MAP[next].label}".`);
 
     try {
       const { updateOrderStatus } = await import('@/lib/api/orders');
       await updateOrderStatus(orderId, next);
+      success(`Order status updated to "${ORDER_STATUS_MAP[next].label}".`);
     } catch {
-      // Revert optimistic update on failure
+      // Revert to whatever this order's status actually was before the optimistic update —
+      // not a hardcoded guess, which used to show the wrong status even on a real success.
       setOrders(prev => prev.map(o =>
-        o.id === orderId ? { ...o, status: 'pending' as OrderStatus } : o,
+        o.id === orderId && previousStatus ? { ...o, status: previousStatus } : o,
       ));
+      error('Could not update the order status. Please try again.');
+    }
+  }
+
+  async function handlePaymentStatusChange(orderId: string, next: PaymentStatus) {
+    const previousPaymentStatus = orders.find(o => o.id === orderId)?.paymentStatus;
+
+    setOrders(prev => prev.map(o =>
+      o.id === orderId ? { ...o, paymentStatus: next, updatedAt: new Date().toISOString() } : o,
+    ));
+
+    try {
+      const { updatePaymentStatus } = await import('@/lib/api/orders');
+      await updatePaymentStatus(orderId, next);
+      success(`Payment status updated to "${PAYMENT_STATUS_MAP[next].label}".`);
+    } catch (e) {
+      setOrders(prev => prev.map(o =>
+        o.id === orderId && previousPaymentStatus ? { ...o, paymentStatus: previousPaymentStatus } : o,
+      ));
+      error(e instanceof Error ? e.message : 'Could not update the payment status. Please try again.');
     }
   }
 
   async function handleCancel(orderId: string) {
+    const previousStatus = orders.find(o => o.id === orderId)?.status;
+
     setOrders(prev => prev.map(o =>
       o.id === orderId ? { ...o, status: 'cancelled' as OrderStatus, updatedAt: new Date().toISOString() } : o,
     ));
-    success('Order has been cancelled.');
     setSelectedOrderId(null);
 
     try {
       const { updateOrderStatus } = await import('@/lib/api/orders');
       await updateOrderStatus(orderId, 'cancelled');
+      success('Order has been cancelled.');
     } catch {
-      // ignore — UI already updated
+      setOrders(prev => prev.map(o =>
+        o.id === orderId && previousStatus ? { ...o, status: previousStatus } : o,
+      ));
+      error('Could not cancel the order. Please try again.');
     }
   }
 
@@ -601,7 +675,7 @@ function OrdersPageContent() {
                           {order.items.length === 1 ? 'item' : 'items'}
                         </td>
                         <td className="px-4 py-3 text-right font-medium text-slate-900 tabular-nums whitespace-nowrap">
-                          {formatCurrency(order.total)}
+                          {formatMoney(order.total, order.currency)}
                         </td>
                         <td className="px-4 py-3">
                           <span
@@ -658,6 +732,7 @@ function OrdersPageContent() {
           canEdit={canEdit}
           onClose={() => setSelectedOrderId(null)}
           onStatusChange={handleStatusChange}
+          onPaymentStatusChange={handlePaymentStatusChange}
           onCancel={handleCancel}
         />
       )}

@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/Input';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useStore } from '@/contexts/StoreContext';
 import { dashboardPath } from '@/lib/utils/dashboard-path';
-import { formatCurrency, formatRelativeTime, formatDate, cn } from '@/lib/utils';
+import { formatMoney, formatRelativeTime, formatDate, cn } from '@/lib/utils';
 import type { ApiCustomerSummary } from '@/lib/api/customers';
 
 function getInitials(name: string): string {
@@ -176,7 +176,7 @@ export default function CustomersPage() {
                         </td>
                         <td className="px-4 py-3 text-slate-600 text-xs">{customer.phone}</td>
                         <td className="px-4 py-3 text-slate-700 font-medium">{customer.orderCount}</td>
-                        <td className="px-4 py-3 text-slate-700">{formatCurrency(customer.totalSpent, store.currency)}</td>
+                        <td className="px-4 py-3 text-slate-700">{formatMoney(customer.totalSpent, null)}</td>
                         <td className="px-4 py-3 text-slate-400 text-xs" title={formatDate(customer.lastOrderAt)}>
                           {formatRelativeTime(customer.lastOrderAt)}
                         </td>

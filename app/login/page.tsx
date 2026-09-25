@@ -299,7 +299,7 @@ export default function LoginPage() {
 
               {/* Register link */}
               <p className="mt-5 text-center text-sm opacity-0 animate-fade-in animate-stagger-5" style={{ color: '#475569' }}>
-                New to ShopLink?{' '}
+                New to khanGates?{' '}
                 <a
                   href="/onboarding"
                   className="font-bold transition-opacity hover:opacity-75"

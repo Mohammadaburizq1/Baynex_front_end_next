@@ -1,4 +1,5 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
 import { useState, useMemo } from 'react';
 import type { StorefrontData, PublicProduct } from '@/lib/types/store';
@@ -18,6 +19,12 @@ const COLORS = {
 } as const;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+// WhatsApp is this template's only contact path: no digits, no inquiry buttons (a bare wa.me
+// link opens WhatsApp with no recipient).
+function hasWhatsApp(whatsappNumber: string | null | undefined): boolean {
+  return (whatsappNumber?.replace(/D/g, '') ?? '').length > 0;
+}
 
 function openWhatsApp(whatsappNumber: string | null | undefined, msg: string) {
   const num = whatsappNumber?.replace(/\D/g, '') ?? '';
@@ -121,10 +128,12 @@ function ProductCard({
           className="font-jakarta font-extrabold text-base mt-2"
           style={{ color: COLORS.text }}
         >
-          {displayPrice.toLocaleString()} {currencySuffix}
+          {formatMoney(displayPrice, currencySuffix)}
         </p>
 
         {/* Inquire Button */}
+
+        {hasWhatsApp(whatsappNumber) && (
         <button
           onClick={handleInquire}
           className="w-full mt-3 py-2 rounded-xl font-jakarta font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-opacity hover:opacity-80"
@@ -138,6 +147,8 @@ function ProductCard({
           <MessageCircle size={14} />
           Inquire on WhatsApp
         </button>
+
+        )}
       </div>
     </div>
   );
@@ -160,12 +171,7 @@ export default function CatalogInquiryTemplate({ data }: { data: StorefrontData 
   }, [data.products, activeCategory]);
 
   function handleHeaderWhatsApp() {
-    const num = data.store.whatsappNumber?.replace(/\D/g, '');
-    if (num) {
-      window.open(`https://wa.me/${num}`, '_blank');
-    } else if (data.store.whatsappNumber) {
-      alert(`Contact us: ${data.store.whatsappNumber}`);
-    }
+    openWhatsApp(data.store.whatsappNumber, `Hi, I'd like to know more about ${data.store.shopName}`);
   }
 
   function handleFooterWhatsApp() {
@@ -192,7 +198,7 @@ export default function CatalogInquiryTemplate({ data }: { data: StorefrontData 
           {data.store.shopName}
         </span>
 
-        {(data.store.whatsappNumber) && (
+        {hasWhatsApp(data.store.whatsappNumber) && (
           <button
             onClick={handleHeaderWhatsApp}
             className="flex items-center gap-1.5 rounded-xl px-4 py-2 font-jakarta font-bold text-xs cursor-pointer hover:opacity-90 transition-opacity"
@@ -306,6 +312,8 @@ export default function CatalogInquiryTemplate({ data }: { data: StorefrontData 
 
         <hr className="my-6" style={{ borderColor: COLORS.surface }} />
 
+        {hasWhatsApp(data.store.whatsappNumber) && (<>
+
         <button
           onClick={handleFooterWhatsApp}
           className="w-full h-14 rounded-xl font-jakarta font-bold text-base text-white flex items-center justify-center gap-2 cursor-pointer hover:opacity-90 transition-opacity"
@@ -314,6 +322,8 @@ export default function CatalogInquiryTemplate({ data }: { data: StorefrontData 
           <MessageCircle size={20} />
           Contact us on WhatsApp
         </button>
+
+        </>)}
       </footer>
     </div>
   );

@@ -1,4 +1,5 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
 import { useEffect, useRef, useState } from 'react';
 import { Anton, Space_Grotesk } from 'next/font/google';
@@ -8,11 +9,11 @@ import { defaultClothingContent } from '@/lib/data/clothing-presets';
 import { parseNavLinks, parseSocialLinks } from '@/lib/utils/clothing-content';
 import CheckoutDrawer from '@/components/storefront/restaurant-default/CheckoutDrawer';
 import { readCartDraft, clearCartDraft } from '@/lib/utils/cart-draft';
-
-interface CartItem {
-  product: PublicProduct;
-  qty: number;
-}
+import {
+  addLine, cartCount as countOf, changeQty as changeLineQty, needsOptions, removeLine, restoreFromDraft,
+  type CartLine,
+} from '@/lib/utils/cart-lines';
+import { ProductOptionsDialog } from '@/components/storefront/shared/ProductOptionsDialog';
 
 const anton = Anton({ subsets: ['latin'], weight: ['400'] });
 const space = Space_Grotesk({ subsets: ['latin'], weight: ['300','400','500','600','700'] });
@@ -33,10 +34,6 @@ const TESTIMONIALS = [
   { q: 'The quality is insane for the price. Street certified.', n: 'Kenji R.', r: 'Tokyo' },
   { q: 'Copped the first drop and never looked back.', n: 'Destiny L.', r: 'London' },
 ];
-
-const CURRENCY_SYMBOLS: Record<string, string> = {
-  USD: '$', EUR: '€', GBP: '£', SAR: 'SR ', AED: 'AED ', KWD: 'KD ', QAR: 'QR ', BHD: 'BD ',
-};
 
 const hexToRgba = (hex: string, alpha: number) => {
   const c = hex.replace('#', '');
@@ -71,9 +68,7 @@ export default function VoidDripTemplate({
   const lime = store.primaryColor || DEFAULT_LIME;
   const C = { black: BLACK, lime, white: WHITE, gray: GRAY, mid: MID };
 
-  const currencySymbol = CURRENCY_SYMBOLS[store.currencyCode] ?? (store.currencySuffix ? store.currencySuffix + ' ' : '$');
-  const formatPrice = (price: number) =>
-    `${currencySymbol}${price % 1 === 0 ? price : price.toFixed(2)}`;
+  const formatPrice = (price: number) => formatMoney(price, store.currencyCode);
 
   const ticker = `  ${content.tickerText}  •  `;
 
@@ -96,12 +91,13 @@ export default function VoidDripTemplate({
     );
   }
 
-  const stats = [
+  // Real stores show only their real piece count; the drop-model claims are showcase copy.
+  const stats = data.demo ? [
     { v: products.length > 0 ? `${products.length}+` : '04', l: 'PIECES' },
     { v: '48H', l: 'DROP WINDOW' },
     { v: '100%', l: 'LIMITED' },
     { v: '0', l: 'RESTOCKS' },
-  ];
+  ] : [{ v: String(products.length), l: 'PIECES' }];
 
   // Brand name split: first word gets lime box, rest stays white
   const nameParts = (store.shopName || 'VOID DRIP').split(' ');
@@ -110,21 +106,19 @@ export default function VoidDripTemplate({
 
   const [heroVis, setHeroVis] = useState(false);
   const [tIdx, setTIdx] = useState(0);
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartLine[]>([]);
+  // The product whose variant / add-on choices are being made (null = dialog closed).
+  const [optionsFor, setOptionsFor] = useState<PublicProduct | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
 
   useEffect(() => { const t = setTimeout(() => setHeroVis(true), 80); return () => clearTimeout(t); }, []);
-  useEffect(() => { const t = setInterval(() => setTIdx(i => (i + 1) % testimonials.length), 4000); return () => clearInterval(t); }, [testimonials.length]);
+  useEffect(() => { const t = setInterval(() => setTIdx(i => (i + 1) % Math.max(testimonials.length, 1)), 4000); return () => clearInterval(t); }, [testimonials.length]);
 
   // Restore a cart saved before a guest was redirected to /customer/login (see CheckoutDrawer).
   useEffect(() => {
     const draft = readCartDraft(store.slug);
     if (!draft || draft.length === 0) return;
-    const restored: CartItem[] = [];
-    for (const d of draft) {
-      const product = products.find(p => String(p.id) === d.productId);
-      if (product) restored.push({ product, qty: d.qty });
-    }
+    const restored = restoreFromDraft(draft, products);
     if (restored.length > 0) {
       setCart(restored);
       setCartOpen(true);
@@ -133,26 +127,25 @@ export default function VoidDripTemplate({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.slug]);
 
-  const cartCount = cart.reduce((sum, item) => sum + item.qty, 0);
+  const cartCount = countOf(cart);
 
   function addToCart(id: number) {
-    const product = products.find(p => p.id === id);
+    const product = products.find((p) => p.id === id);
     if (!product) return;
-    setCart(prev => {
-      const existing = prev.find(item => item.product.id === id);
-      if (existing) return prev.map(item => item.product.id === id ? { ...item, qty: item.qty + 1 } : item);
-      return [...prev, { product, qty: 1 }];
-    });
+    // A product with variants or add-ons needs the customer to choose first.
+    if (needsOptions(product)) {
+      setOptionsFor(product);
+      return;
+    }
+    setCart((prev) => addLine(prev, product, 1));
   }
 
-  function removeFromCart(id: number) {
-    setCart(prev => prev.filter(item => item.product.id !== id));
+  function removeFromCart(key: string) {
+    setCart((prev) => removeLine(prev, key));
   }
 
-  function changeQty(id: number, delta: number) {
-    setCart(prev =>
-      prev.map(item => item.product.id === id ? { ...item, qty: item.qty + delta } : item)
-        .filter(item => item.qty > 0));
+  function changeQty(key: string, delta: number) {
+    setCart((prev) => changeLineQty(prev, key, delta));
   }
 
   const up = (d = 0): React.CSSProperties => ({
@@ -228,7 +221,7 @@ export default function VoidDripTemplate({
             {content.heroDescription}
           </p>
           <div style={{ ...up(380),display:'flex',gap:12,flexWrap:'wrap' }}>
-            <a href={wa ? `https://wa.me/${wa}` : '#'} style={{ padding:'14px 36px',background:C.lime,color:C.black,textDecoration:'none',fontFamily:anton.style.fontFamily,fontSize:16,letterSpacing:2,cursor:'pointer',display:'inline-block' }}>
+            <a href={wa ? `https://wa.me/${wa}` : '#products'} style={{ padding:'14px 36px',background:C.lime,color:C.black,textDecoration:'none',fontFamily:anton.style.fontFamily,fontSize:16,letterSpacing:2,cursor:'pointer',display:'inline-block' }}>
               {content.primaryCta.toUpperCase()}
             </a>
             <button style={{ padding:'14px 36px',background:'transparent',border:`1px solid ${hexToRgba(C.white,0.2)}`,color:C.white,fontFamily:anton.style.fontFamily,fontSize:16,letterSpacing:2,cursor:'pointer' }}>
@@ -237,7 +230,7 @@ export default function VoidDripTemplate({
           </div>
         </div>
         <div style={{ position:'absolute',bottom:-20,right:'3%',fontFamily:anton.style.fontFamily,fontSize:'clamp(100px,18vw,260px)',color:hexToRgba(C.lime,0.04),lineHeight:1,userSelect:'none',pointerEvents:'none',letterSpacing:4 }}>
-          {products.length > 0 ? products.length : '04'}
+          {data.demo && products.length === 0 ? '04' : products.length}
         </div>
       </section>
 
@@ -249,7 +242,7 @@ export default function VoidDripTemplate({
       </div>
 
       {/* PRODUCTS */}
-      <section style={{ padding:'80px 5%',background:C.black }}>
+      <section id="products" style={{ padding:'80px 5%',background:C.black }}>
         <div style={{ maxWidth:1280,margin:'0 auto' }}>
           <div style={{ display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:36 }}>
             <div>
@@ -353,6 +346,8 @@ export default function VoidDripTemplate({
       </section>
 
       {/* TESTIMONIALS */}
+
+      {testimonials.length > 0 && (<>
       <section style={{ padding:'80px 5%',background:C.gray }}>
         <div style={{ maxWidth:800,margin:'0 auto',textAlign:'center' }}>
           <p style={{ fontSize:10,letterSpacing:4,color:C.lime,marginBottom:32,fontWeight:700 }}>{content.testimonialsTitle.toUpperCase()}</p>
@@ -372,7 +367,11 @@ export default function VoidDripTemplate({
         </div>
       </section>
 
-      {/* NEWSLETTER */}
+      </>)}
+
+      {/* NEWSLETTER: no subscription backend exists, so the form renders in the showcase only */}
+
+      {data.demo && (<>
       <section style={{ background:C.black,padding:'80px 5%',borderTop:`3px solid ${C.lime}` }}>
         <div style={{ maxWidth:640,margin:'0 auto' }}>
           <p style={{ fontSize:10,letterSpacing:4,color:C.lime,marginBottom:8,fontWeight:700 }}>{content.newsletterEyebrow.toUpperCase()}</p>
@@ -385,6 +384,8 @@ export default function VoidDripTemplate({
           </div>
         </div>
       </section>
+
+      </>)}
 
       {/* FOOTER */}
       <footer style={{ background:'#050505',padding:'32px 5%',borderTop:`1px solid ${hexToRgba(C.lime,0.1)}` }}>
@@ -403,6 +404,16 @@ export default function VoidDripTemplate({
         </div>
       </footer>
 
+      <ProductOptionsDialog
+        product={optionsFor}
+        currencySuffix={store.currencySuffix}
+        accent={store.primaryColor || '#111827'}
+        onClose={() => setOptionsFor(null)}
+        onConfirm={(selection, qty) => {
+          if (optionsFor) setCart((prev) => addLine(prev, optionsFor, qty, selection));
+          setOptionsFor(null);
+        }}
+      />
       <CheckoutDrawer
         open={cartOpen}
         onClose={() => setCartOpen(false)}

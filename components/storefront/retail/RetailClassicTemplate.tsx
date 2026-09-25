@@ -1,17 +1,18 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
 import { useEffect, useState, useMemo } from 'react';
 import type { StorefrontData, PublicProduct } from '@/lib/types/store';
 import { ShoppingBag } from 'lucide-react';
 import CheckoutDrawer from '@/components/storefront/restaurant-default/CheckoutDrawer';
 import { readCartDraft, clearCartDraft } from '@/lib/utils/cart-draft';
+import {
+  addLine, cartCount as countOf, changeQty as changeLineQty, needsOptions, removeLine, restoreFromDraft,
+  type CartLine,
+} from '@/lib/utils/cart-lines';
+import { ProductOptionsDialog } from '@/components/storefront/shared/ProductOptionsDialog';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-interface CartItem {
-  product: PublicProduct;
-  qty: number;
-}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -85,11 +86,11 @@ function ProductCard({
         </p>
         <div className="mt-2 flex items-center gap-2">
           <span className="font-jakarta font-extrabold text-[15px]" style={{ color: COLORS.ink }}>
-            {displayPrice.toLocaleString()} {currencySuffix}
+            {formatMoney(displayPrice, currencySuffix)}
           </span>
           {hasDiscount && (
             <span className="font-jakarta text-sm line-through" style={{ color: COLORS.muted }}>
-              {product.price.toLocaleString()} {currencySuffix}
+              {formatMoney(product.price, currencySuffix)}
             </span>
           )}
         </div>
@@ -124,17 +125,15 @@ export default function RetailClassicTemplate({ data }: { data: StorefrontData }
 
   const [activeCategory, setActiveCategory] = useState<string>('All');
   const [cartOpen, setCartOpen] = useState(false);
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartLine[]>([]);
+  // The product whose variant / add-on choices are being made (null = dialog closed).
+  const [optionsFor, setOptionsFor] = useState<PublicProduct | null>(null);
 
   // Restore a cart saved before a guest was redirected to /customer/login (see CheckoutDrawer).
   useEffect(() => {
     const draft = readCartDraft(data.store.slug);
     if (!draft || draft.length === 0) return;
-    const restored: CartItem[] = [];
-    for (const d of draft) {
-      const product = data.products.find((p) => String(p.id) === d.productId);
-      if (product) restored.push({ product, qty: d.qty });
-    }
+    const restored = restoreFromDraft(draft, data.products);
     if (restored.length > 0) {
       setCart(restored);
       setCartOpen(true);
@@ -153,34 +152,25 @@ export default function RetailClassicTemplate({ data }: { data: StorefrontData }
     return data.products.filter((p) => p.category === activeCategory);
   }, [data.products, activeCategory]);
 
-  const cartCount = cart.reduce((sum, item) => sum + item.qty, 0);
+  const cartCount = countOf(cart);
 
   function addToCart(id: number) {
     const product = data.products.find((p) => p.id === id);
     if (!product) return;
-    setCart((prev) => {
-      const existing = prev.find((item) => item.product.id === id);
-      if (existing) {
-        return prev.map((item) =>
-          item.product.id === id ? { ...item, qty: item.qty + 1 } : item
-        );
-      }
-      return [...prev, { product, qty: 1 }];
-    });
+    // A product with variants or add-ons needs the customer to choose first.
+    if (needsOptions(product)) {
+      setOptionsFor(product);
+      return;
+    }
+    setCart((prev) => addLine(prev, product, 1));
   }
 
-  function removeFromCart(id: number) {
-    setCart((prev) => prev.filter((item) => item.product.id !== id));
+  function removeFromCart(key: string) {
+    setCart((prev) => removeLine(prev, key));
   }
 
-  function changeQty(id: number, delta: number) {
-    setCart((prev) =>
-      prev
-        .map((item) =>
-          item.product.id === id ? { ...item, qty: item.qty + delta } : item
-        )
-        .filter((item) => item.qty > 0)
-    );
+  function changeQty(key: string, delta: number) {
+    setCart((prev) => changeLineQty(prev, key, delta));
   }
 
   return (
@@ -292,6 +282,16 @@ export default function RetailClassicTemplate({ data }: { data: StorefrontData }
       </main>
 
       {/* ── Checkout ── */}
+      <ProductOptionsDialog
+        product={optionsFor}
+        currencySuffix={data.store.currencySuffix}
+        accent={data.store.primaryColor || '#111827'}
+        onClose={() => setOptionsFor(null)}
+        onConfirm={(selection, qty) => {
+          if (optionsFor) setCart((prev) => addLine(prev, optionsFor, qty, selection));
+          setOptionsFor(null);
+        }}
+      />
       <CheckoutDrawer
         open={cartOpen}
         onClose={() => setCartOpen(false)}

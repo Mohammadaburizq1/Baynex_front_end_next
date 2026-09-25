@@ -1,14 +1,20 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Anton, Barlow_Condensed } from 'next/font/google';
-import type { StorefrontData } from '@/lib/types/store';
-import { ShoppingCart, X, Flame, ChevronRight } from 'lucide-react';
+import type { StorefrontData, PublicProduct } from '@/lib/types/store';
+import { ShoppingCart, Flame, ChevronRight } from 'lucide-react';
+import CheckoutDrawer from '@/components/storefront/restaurant-default/CheckoutDrawer';
+import { ProductOptionsDialog } from '@/components/storefront/shared/ProductOptionsDialog';
+import { readCartDraft, clearCartDraft } from '@/lib/utils/cart-draft';
+import {
+  addLine, cartCount as countOf, cartSubtotal, changeQty as changeLineQty, needsOptions, removeLine, restoreFromDraft,
+  type CartLine,
+} from '@/lib/utils/cart-lines';
 
 const anton = Anton({ subsets: ['latin'], weight: '400' });
 const barlow = Barlow_Condensed({ subsets: ['latin'], weight: ['300', '400', '600', '700'] });
-
-type CartItem = { id: number; name: string; price: number; qty: number };
 
 const CATEGORIES = ['All', 'Burgers', 'Sides', 'Drinks', 'Desserts'];
 
@@ -22,32 +28,42 @@ const SPARKS = Array.from({ length: 18 }, (_, i) => ({
 
 export default function BurgerJointTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  // Real stores filter by their own categories; the fixed list is showcase-only (it matched nothing real).
+  const categories = data.demo ? CATEGORIES : ['All', ...Array.from(new Set(products.map(p => p.category).filter(Boolean)))];
   const tc = data.templateContent;
   const [activeCategory, setActiveCategory] = useState('All');
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartLine[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
+  // The product whose variant / add-on choices are being made (null = dialog closed).
+  const [optionsFor, setOptionsFor] = useState<PublicProduct | null>(null);
+
+  // Restore a cart saved before a guest was redirected to /customer/login (see CheckoutDrawer).
+  useEffect(() => {
+    const draft = readCartDraft(store.slug);
+    if (!draft || draft.length === 0) return;
+    const restored = restoreFromDraft(draft, products);
+    if (restored.length > 0) {
+      setCart(restored);
+      setCartOpen(true);
+    }
+    clearCartDraft(store.slug);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.slug]);
 
   const filtered =
     activeCategory === 'All' ? products : products.filter((p) => p.category === activeCategory);
 
-  const addToCart = (p: (typeof products)[0]) => {
-    setCart((prev) => {
-      const exists = prev.find((c) => c.id === p.id);
-      if (exists) return prev.map((c) => (c.id === p.id ? { ...c, qty: c.qty + 1 } : c));
-      return [...prev, { id: p.id, name: p.name, price: p.discountPrice ?? p.price, qty: 1 }];
-    });
+  const addToCart = (p: PublicProduct) => {
+    // A product with variants or add-ons needs the customer to choose first.
+    if (needsOptions(p)) {
+      setOptionsFor(p);
+      return;
+    }
+    setCart((prev) => addLine(prev, p, 1));
   };
 
-  const removeOne = (id: number) =>
-    setCart((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, qty: c.qty - 1 } : c)).filter((c) => c.qty > 0)
-    );
-
-  const total = cart.reduce((sum, c) => sum + c.price * c.qty, 0);
-  const itemCount = cart.reduce((sum, c) => sum + c.qty, 0);
-
-  const waMsg = `Hi! I'd like to order: ${cart.map((c) => `${c.qty}x ${c.name}`).join(', ')}. Total: $${total.toFixed(2)}`;
-  const waHref = `https://wa.me/${(store.whatsappNumber ?? '').replace(/\D/g, '')}?text=${encodeURIComponent(waMsg)}`;
+  const total = cartSubtotal(cart);
+  const itemCount = countOf(cart);
 
   return (
     <>
@@ -335,7 +351,7 @@ export default function BurgerJointTemplate({ data }: { data: StorefrontData }) 
               FULL MENU
             </h2>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {CATEGORIES.map((cat) => (
+              {categories.map((cat) => (
                 <button
                   key={cat}
                   className={`bj-tab${activeCategory === cat ? ' active' : ''} ${barlow.className}`}
@@ -447,13 +463,13 @@ export default function BurgerJointTemplate({ data }: { data: StorefrontData }) 
                             className={anton.className}
                             style={{ fontSize: 26, color: '#F59E0B' }}
                           >
-                            ${p.discountPrice.toFixed(2)}
+                            {formatMoney(p.discountPrice, store.currencySuffix)}
                           </span>
                           <span
                             className={barlow.className}
                             style={{ fontSize: 14, color: '#554840', textDecoration: 'line-through' }}
                           >
-                            ${p.price.toFixed(2)}
+                            {formatMoney(p.price, store.currencySuffix)}
                           </span>
                         </div>
                       ) : (
@@ -461,7 +477,7 @@ export default function BurgerJointTemplate({ data }: { data: StorefrontData }) 
                           className={anton.className}
                           style={{ fontSize: 26, color: '#F59E0B' }}
                         >
-                          ${p.price.toFixed(2)}
+                          {formatMoney(p.price, store.currencySuffix)}
                         </span>
                       )}
                     </div>
@@ -479,148 +495,26 @@ export default function BurgerJointTemplate({ data }: { data: StorefrontData }) 
           </div>
         </section>
 
-        {/* Cart sidebar */}
-        {cartOpen && (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 100 }}>
-            <div
-              style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.72)' }}
-              onClick={() => setCartOpen(false)}
-            />
-            <div
-              style={{
-                position: 'absolute',
-                top: 0,
-                right: 0,
-                bottom: 0,
-                width: 360,
-                background: '#0F0B06',
-                borderLeft: '1px solid #2C2114',
-                animation: 'cartIn 0.28s ease',
-                display: 'flex',
-                flexDirection: 'column',
-              }}
-            >
-              <div
-                style={{
-                  padding: '20px 24px',
-                  borderBottom: '1px solid #2C2114',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                }}
-              >
-                <h3
-                  className={anton.className}
-                  style={{ fontSize: 26, color: '#F5F0E8', letterSpacing: '0.04em' }}
-                >
-                  YOUR ORDER
-                </h3>
-                <button
-                  onClick={() => setCartOpen(false)}
-                  style={{ background: 'none', border: 'none', color: '#7A6A58', cursor: 'pointer' }}
-                >
-                  <X size={20} />
-                </button>
-              </div>
-              <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
-                {cart.length === 0 ? (
-                  <p
-                    className={barlow.className}
-                    style={{ color: '#554840', textAlign: 'center', marginTop: 48, fontSize: 16 }}
-                  >
-                    Nothing here yet.
-                    <br />
-                    Add something from the menu!
-                  </p>
-                ) : (
-                  cart.map((item) => (
-                    <div
-                      key={item.id}
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        padding: '12px 0',
-                        borderBottom: '1px solid #1C1507',
-                      }}
-                    >
-                      <div>
-                        <p
-                          className={barlow.className}
-                          style={{ color: '#F5F0E8', fontWeight: 600, fontSize: 15 }}
-                        >
-                          {item.name}
-                        </p>
-                        <p
-                          className={barlow.className}
-                          style={{ color: '#7A6A58', fontSize: 13 }}
-                        >
-                          x{item.qty} · ${(item.price * item.qty).toFixed(2)}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => removeOne(item.id)}
-                        style={{
-                          background: '#2C2114',
-                          border: 'none',
-                          color: '#9A8570',
-                          width: 28,
-                          height: 28,
-                          borderRadius: 6,
-                          cursor: 'pointer',
-                          fontSize: 16,
-                          lineHeight: 1,
-                        }}
-                      >
-                        −
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-              {cart.length > 0 && (
-                <div style={{ padding: '20px 24px', borderTop: '1px solid #2C2114' }}>
-                  <div
-                    style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}
-                  >
-                    <span
-                      className={barlow.className}
-                      style={{ color: '#9A8570', fontWeight: 700, fontSize: 15, letterSpacing: '0.06em' }}
-                    >
-                      TOTAL
-                    </span>
-                    <span
-                      className={anton.className}
-                      style={{ color: '#F59E0B', fontSize: 24 }}
-                    >
-                      ${total.toFixed(2)}
-                    </span>
-                  </div>
-                  <a
-                    href={waHref}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      display: 'block',
-                      background: 'linear-gradient(135deg, #F59E0B, #D97706)',
-                      color: '#080501',
-                      borderRadius: 8,
-                      padding: '14px',
-                      textAlign: 'center',
-                      fontFamily: barlow.style.fontFamily,
-                      fontWeight: 700,
-                      fontSize: 15,
-                      letterSpacing: '0.08em',
-                      textDecoration: 'none',
-                    }}
-                  >
-                    ORDER VIA WHATSAPP
-                  </a>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        <ProductOptionsDialog
+          product={optionsFor}
+          currencySuffix={store.currencySuffix}
+          accent="#F59E0B"
+          onClose={() => setOptionsFor(null)}
+          onConfirm={(selection, qty) => {
+            if (optionsFor) setCart((prev) => addLine(prev, optionsFor, qty, selection));
+            setOptionsFor(null);
+          }}
+        />
+        <CheckoutDrawer
+          open={cartOpen}
+          onClose={() => setCartOpen(false)}
+          storeSlug={store.slug}
+          cart={cart}
+          currencySuffix={store.currencySuffix}
+          onChangeQty={(key, delta) => setCart((prev) => changeLineQty(prev, key, delta))}
+          onRemove={(key) => setCart((prev) => removeLine(prev, key))}
+          onOrderPlaced={() => setCart([])}
+        />
 
         {/* Bottom cart bar */}
         {itemCount > 0 && !cartOpen && (
@@ -657,7 +551,7 @@ export default function BurgerJointTemplate({ data }: { data: StorefrontData }) 
                 {itemCount} ITEM{itemCount !== 1 ? 'S' : ''}
               </span>
               <span style={{ fontWeight: 700, fontSize: 16, letterSpacing: '0.06em', color: '#080501' }}>
-                VIEW ORDER · ${total.toFixed(2)}
+                VIEW ORDER · {formatMoney(total, store.currencySuffix)}
               </span>
             </button>
           </div>

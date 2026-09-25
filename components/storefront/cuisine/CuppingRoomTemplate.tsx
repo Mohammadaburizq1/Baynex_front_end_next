@@ -1,20 +1,21 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
 import { useState, useMemo, useRef, useEffect } from 'react';
 import type { StorefrontData, PublicProduct } from '@/lib/types/store';
-import { ChevronUp, X } from 'lucide-react';
+import { ChevronUp } from 'lucide-react';
 import { Playfair_Display } from 'next/font/google';
 import { Cormorant_Garamond } from 'next/font/google';
+import CheckoutDrawer from '@/components/storefront/restaurant-default/CheckoutDrawer';
+import { ProductOptionsDialog } from '@/components/storefront/shared/ProductOptionsDialog';
+import { readCartDraft, clearCartDraft } from '@/lib/utils/cart-draft';
+import {
+  addLine, cartCount as countOf, changeQty as changeLineQty, needsOptions, removeLine, restoreFromDraft,
+  type CartLine,
+} from '@/lib/utils/cart-lines';
 
 const playfair = Playfair_Display({ subsets: ['latin'], weight: ['400', '600', '700'], display: 'swap' });
 const cormorant = Cormorant_Garamond({ subsets: ['latin'], weight: ['400', '500', '600'], style: ['normal', 'italic'], display: 'swap' });
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface CartItem {
-  product: PublicProduct;
-  qty: number;
-}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -38,7 +39,7 @@ function ProductPage({
   inCart: boolean;
   onAdd: () => void;
 }) {
-  const displayPrice = `${(product.discountPrice ?? product.price).toFixed(2)} ${currencySuffix}`;
+  const displayPrice = formatMoney((product.discountPrice ?? product.price), currencySuffix);
 
   return (
     <div className="min-h-screen snap-start relative overflow-hidden" style={{ background: C.bg }}>
@@ -125,151 +126,48 @@ function ProductPage({
   );
 }
 
-// ─── Checkout Panel ───────────────────────────────────────────────────────────
-
-function CheckoutPanel({
-  cart,
-  currencySuffix,
-  whatsappNumber,
-  shopName,
-  onClose,
-}: {
-  cart: CartItem[];
-  currencySuffix: string;
-  whatsappNumber: string | null;
-  shopName: string;
-  onClose: () => void;
-}) {
-  const total = cart.reduce((sum, item) => {
-    const price = item.product.discountPrice ?? item.product.price;
-    return sum + price * item.qty;
-  }, 0);
-
-  const handleOrder = () => {
-    if (!whatsappNumber) return;
-    const lines = cart
-      .map(
-        (item) =>
-          `• ${item.product.name} ×${item.qty} — ${((item.product.discountPrice ?? item.product.price) * item.qty).toFixed(2)} ${currencySuffix}`,
-      )
-      .join('\n');
-    const msg = `Hello ${shopName}!\n\nMy selection:\n${lines}\n\nTotal: ${total.toFixed(2)} ${currencySuffix}`;
-    window.open(
-      `https://wa.me/${whatsappNumber.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`,
-      '_blank',
-    );
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-30 flex items-end"
-      style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(12px)' }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div
-        className="w-full rounded-t-3xl px-6 py-8"
-        style={{
-          background: 'rgba(10,10,10,0.92)',
-          borderTop: '1px solid rgba(201,169,98,0.4)',
-        }}
-      >
-        {/* Handle */}
-        <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: 'rgba(184,176,166,0.4)' }} />
-
-        {/* Close button */}
-        <button
-          onClick={onClose}
-          className="absolute top-6 right-6 cursor-pointer"
-          aria-label="Close panel"
-          style={{ color: C.muted }}
-        >
-          <X size={20} />
-        </button>
-
-        {/* Title */}
-        <h2
-          className={`${playfair.className} font-semibold mb-4`}
-          style={{ fontSize: '26px', color: C.cream }}
-        >
-          Your selection
-        </h2>
-
-        {/* Items */}
-        <div className="flex flex-col gap-3 mb-2 max-h-[40vh] overflow-y-auto">
-          {cart.map((item) => {
-            const price = (item.product.discountPrice ?? item.product.price) * item.qty;
-            return (
-              <div key={item.product.id} className="flex items-center justify-between">
-                <span
-                  className={`${cormorant.className} font-medium text-[17px]`}
-                  style={{ color: C.muted }}
-                >
-                  {item.product.name}
-                  {item.qty > 1 ? ` ×${item.qty}` : ''}
-                </span>
-                <span
-                  className={`${playfair.className} font-semibold text-sm`}
-                  style={{ color: C.cream }}
-                >
-                  {price.toFixed(2)} {currencySuffix}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Total */}
-        <div
-          className="flex items-center justify-between pt-4 mb-1"
-          style={{ borderTop: '1px solid rgba(201,169,98,0.2)' }}
-        >
-          <span className={`${playfair.className} font-semibold text-sm`} style={{ color: C.muted }}>
-            Total
-          </span>
-          <span className={`${playfair.className} font-bold text-xl`} style={{ color: C.gold }}>
-            {total.toFixed(2)} {currencySuffix}
-          </span>
-        </div>
-
-        {/* Place Order */}
-        <button
-          onClick={handleOrder}
-          className={`${playfair.className} font-bold text-base px-8 py-4 mt-4 w-full rounded-xl cursor-pointer`}
-          style={{ background: C.gold, color: '#000' }}
-        >
-          Place Order
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function CuppingRoomTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
   const tc = data.templateContent;
 
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartLine[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
   const [panelOpen, setPanelOpen] = useState(false);
+  // The product whose variant / add-on choices are being made (null = dialog closed).
+  const [optionsFor, setOptionsFor] = useState<PublicProduct | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Restore a cart saved before a guest was redirected to /customer/login (see CheckoutDrawer).
+  useEffect(() => {
+    const draft = readCartDraft(store.slug);
+    if (!draft || draft.length === 0) return;
+    const restored = restoreFromDraft(draft, products);
+    if (restored.length > 0) {
+      setCart(restored);
+      setPanelOpen(true);
+    }
+    clearCartDraft(store.slug);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.slug]);
 
   const availableProducts = useMemo(
     () => products.filter((p) => p.available),
     [products],
   );
 
-  const cartCount = cart.reduce((s, i) => s + i.qty, 0);
+  const cartCount = countOf(cart);
 
   const isInCart = (id: number) => cart.some((i) => i.product.id === id);
 
   const addToCart = (product: PublicProduct) => {
-    setCart((prev) => {
-      const existing = prev.find((i) => i.product.id === product.id);
-      if (existing) return prev.map((i) => i.product.id === product.id ? { ...i, qty: i.qty + 1 } : i);
-      return [...prev, { product, qty: 1 }];
-    });
+    // A product with variants or add-ons needs the customer to choose first.
+    if (needsOptions(product)) {
+      setOptionsFor(product);
+      return;
+    }
+    setCart((prev) => addLine(prev, product, 1));
   };
 
   // Track active page via scroll
@@ -393,16 +291,26 @@ export default function CuppingRoomTemplate({ data }: { data: StorefrontData }) 
         </button>
       )}
 
-      {/* Checkout panel */}
-      {panelOpen && (
-        <CheckoutPanel
-          cart={cart}
-          currencySuffix={store.currencySuffix}
-          whatsappNumber={store.whatsappNumber}
-          shopName={store.shopName}
-          onClose={() => setPanelOpen(false)}
-        />
-      )}
+      <ProductOptionsDialog
+        product={optionsFor}
+        currencySuffix={store.currencySuffix}
+        accent={C.gold}
+        onClose={() => setOptionsFor(null)}
+        onConfirm={(selection, qty) => {
+          if (optionsFor) setCart((prev) => addLine(prev, optionsFor, qty, selection));
+          setOptionsFor(null);
+        }}
+      />
+      <CheckoutDrawer
+        open={panelOpen}
+        onClose={() => setPanelOpen(false)}
+        storeSlug={store.slug}
+        cart={cart}
+        currencySuffix={store.currencySuffix}
+        onChangeQty={(key, delta) => setCart((prev) => changeLineQty(prev, key, delta))}
+        onRemove={(key) => setCart((prev) => removeLine(prev, key))}
+        onOrderPlaced={() => setCart([])}
+      />
     </div>
   );
 }

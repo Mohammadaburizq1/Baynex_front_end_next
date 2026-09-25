@@ -2,16 +2,18 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   LayoutDashboard, ShoppingBag, ClipboardList, Truck, Package,
   BarChart2, Users, Settings, ChevronLeft, Store, CalendarDays,
-  Home, X, Palette, LogOut, Loader2, CreditCard, Lightbulb, Tag,
+  Home, X, Palette, LogOut, Loader2, CreditCard, Lightbulb, Tag, FolderTree,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useStore } from '@/contexts/StoreContext';
 import { signOut } from '@/lib/auth/session';
 import { dashboardPath } from '@/lib/utils/dashboard-path';
+import { getStockAlerts } from '@/lib/api/inventory';
+import { BUSINESS_TYPES_WITH_STOCK } from '@/lib/utils';
 import type { BusinessType, UserRole } from '@/lib/types';
 import type { DashboardSection, PermissionGrid } from '@/lib/api/permissions';
 
@@ -21,6 +23,11 @@ interface NavItem {
   icon: React.ElementType;
   // Omit to show to every merchant role. Present = visible only to the listed roles.
   roles?: UserRole[];
+  // Present = hidden from staff whose grid level for this section is NONE (owners are always
+  // ALL_EDIT_GRID, so this never hides anything from them).
+  permission?: DashboardSection;
+  // A count to show next to the label (e.g. items low or out of stock on Inventory).
+  badge?: number;
 }
 
 type NavSection = { label: string; section?: string; icon: React.ElementType };
@@ -29,6 +36,7 @@ const NAV_SECTIONS: Record<BusinessType, NavSection[]> = {
   restaurant: [
     { label: 'Home', icon: LayoutDashboard },
     { label: 'Menu', section: 'products', icon: ShoppingBag },
+    { label: 'Categories', section: 'categories', icon: FolderTree },
     { label: 'Orders', section: 'orders', icon: ClipboardList },
     { label: 'Delivery', section: 'delivery', icon: Truck },
     { label: 'Inventory', section: 'inventory', icon: Package },
@@ -40,6 +48,7 @@ const NAV_SECTIONS: Record<BusinessType, NavSection[]> = {
   retail: [
     { label: 'Home', icon: LayoutDashboard },
     { label: 'Products', section: 'products', icon: ShoppingBag },
+    { label: 'Categories', section: 'categories', icon: FolderTree },
     { label: 'Orders', section: 'orders', icon: ClipboardList },
     { label: 'Delivery', section: 'delivery', icon: Truck },
     { label: 'Inventory', section: 'inventory', icon: Package },
@@ -60,6 +69,7 @@ const NAV_SECTIONS: Record<BusinessType, NavSection[]> = {
   services: [
     { label: 'Home', icon: LayoutDashboard },
     { label: 'Services', section: 'products', icon: ShoppingBag },
+    { label: 'Categories', section: 'categories', icon: FolderTree },
     { label: 'Appointments', section: 'appointments', icon: CalendarDays },
     { label: 'Orders', section: 'orders', icon: ClipboardList },
     { label: 'Customers', section: 'customers', icon: Users },
@@ -70,6 +80,7 @@ const NAV_SECTIONS: Record<BusinessType, NavSection[]> = {
   catalog: [
     { label: 'Home', icon: LayoutDashboard },
     { label: 'Products', section: 'products', icon: ShoppingBag },
+    { label: 'Categories', section: 'categories', icon: FolderTree },
     { label: 'Customers', section: 'customers', icon: Users },
     { label: 'Reports', section: 'reports', icon: BarChart2 },
     { label: 'Insights', section: 'insights', icon: Lightbulb },
@@ -78,6 +89,7 @@ const NAV_SECTIONS: Record<BusinessType, NavSection[]> = {
   clothing: [
     { label: 'Home', icon: LayoutDashboard },
     { label: 'Products', section: 'products', icon: ShoppingBag },
+    { label: 'Categories', section: 'categories', icon: FolderTree },
     { label: 'Orders', section: 'orders', icon: ClipboardList },
     { label: 'Customers', section: 'customers', icon: Users },
     { label: 'Reports', section: 'reports', icon: BarChart2 },
@@ -92,6 +104,7 @@ const NAV_SECTIONS: Record<BusinessType, NavSection[]> = {
 // 'Home' has no entry and is always visible.
 const SECTION_FOR_NAV: Record<string, DashboardSection> = {
   products: 'PRODUCTS',
+  categories: 'PRODUCTS',
   inventory: 'PRODUCTS',
   orders: 'ORDERS',
   delivery: 'DELIVERY',
@@ -104,7 +117,7 @@ const SECTION_FOR_NAV: Record<string, DashboardSection> = {
 
 // permissions is only meaningfully consulted for staff — owners are always ALL_EDIT_GRID (see
 // StoreContext), so this filter is a no-op for them.
-function buildNavItems(businessType: BusinessType, slug: string, permissions: PermissionGrid): NavItem[] {
+function buildNavItems(businessType: BusinessType, slug: string, permissions: PermissionGrid, stockAlerts: number): NavItem[] {
   const sections = NAV_SECTIONS[businessType] ?? NAV_SECTIONS.retail;
   return sections
     .filter(({ section }) => {
@@ -116,6 +129,7 @@ function buildNavItems(businessType: BusinessType, slug: string, permissions: Pe
       label,
       href: dashboardPath(slug, section),
       icon,
+      badge: section === 'inventory' ? stockAlerts : undefined,
     }));
 }
 
@@ -131,6 +145,7 @@ function bottomNavItems(businessType: BusinessType, slug: string): NavItem[] {
       label: 'Customize Storefront',
       href: dashboardPath(slug, 'customize-storefront'),
       icon: Palette,
+      permission: 'STOREFRONT',
     });
   }
   return items;
@@ -147,7 +162,23 @@ function SidebarContent({ onClose, collapsed, onToggleCollapse }: SidebarContent
   const router = useRouter();
   const { store, businessType, dashboardSlug, userRole, permissions } = useStore();
   const [loggingOut, setLoggingOut] = useState(false);
-  const navItems = buildNavItems(businessType, dashboardSlug, permissions);
+  const [stockAlerts, setStockAlerts] = useState(0);
+  const canSeeStock = permissions.PRODUCTS !== 'NONE' && (BUSINESS_TYPES_WITH_STOCK[businessType] ?? false);
+  useEffect(() => {
+    // Items that are low or out of stock, so the merchant notices without opening Inventory.
+    if (!canSeeStock || store.id.startsWith('local-')) {
+      setStockAlerts(0);
+      return;
+    }
+    let cancelled = false;
+    const load = () => getStockAlerts(store.id)
+      .then(a => { if (!cancelled) setStockAlerts(a.lowCount + a.outCount); })
+      .catch(() => { /* the badge is a nicety */ });
+    void load();
+    const timer = setInterval(load, 120_000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [store.id, canSeeStock]);
+  const navItems = buildNavItems(businessType, dashboardSlug, permissions, stockAlerts);
   const homeHref = dashboardPath(dashboardSlug);
 
   const isActive = (href: string) =>
@@ -221,8 +252,21 @@ function SidebarContent({ onClose, collapsed, onToggleCollapse }: SidebarContent
                   : 'text-sidebar-text hover:bg-sidebar-hover hover:text-sidebar-heading',
               )}
             >
-              <Icon size={18} className="shrink-0" />
+              <span className="relative shrink-0">
+                <Icon size={18} />
+                {collapsed && !!item.badge && (
+                  <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-amber-400" aria-hidden="true" />
+                )}
+              </span>
               {!collapsed && <span className="text-sm font-medium">{item.label}</span>}
+              {!collapsed && !!item.badge && (
+                <span
+                  className="ml-auto min-w-5 h-5 px-1.5 rounded-full bg-amber-400 text-[11px] font-bold text-slate-900 flex items-center justify-center tabular-nums"
+                  aria-label={`${item.badge} items need attention`}
+                >
+                  {item.badge}
+                </span>
+              )}
             </Link>
           );
         })}
@@ -231,6 +275,7 @@ function SidebarContent({ onClose, collapsed, onToggleCollapse }: SidebarContent
       <div className="py-3 px-2 border-t border-sidebar-border space-y-0.5">
         {bottomNavItems(businessType, dashboardSlug)
           .filter(item => !item.roles || item.roles.includes(userRole))
+          .filter(item => !item.permission || permissions[item.permission] !== 'NONE')
           .map(item => {
           const Icon = item.icon;
           const active = isActive(item.href);

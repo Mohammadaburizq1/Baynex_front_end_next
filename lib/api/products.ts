@@ -1,6 +1,50 @@
 import { apiRequest } from './client';
 import type { Product } from '@/lib/types';
 
+// ── Catalogue sub-resources: options/variants, add-ons, gallery ──────────────────────────────────
+// Shapes of com.byonix.shoplink.api.dto.VariantDtos / ModifierDtos / ImageDtos.
+
+export interface ApiOptionValue { id: string; label: string }
+export interface ApiOption { id: string; name: string; values: ApiOptionValue[] }
+
+export interface ApiVariant {
+  id: string;
+  /** "M / Black" */
+  label: string;
+  /** One label per option, in option order: ["M", "Black"]. */
+  selection: string[];
+  sku?: string;
+  price: number;
+  salePrice?: number;
+  /** Exact count for the merchant; null = not tracked. */
+  stock: number | null;
+  lowStockThreshold?: number | null;
+  inStock: boolean;
+  available: boolean;
+  sortOrder: number;
+}
+
+export interface ApiVariants { options: ApiOption[]; variants: ApiVariant[] }
+
+export interface ApiModifierOption {
+  id: string;
+  name: string;
+  priceDelta: number;
+  preselected: boolean;
+  available: boolean;
+}
+
+export interface ApiModifierGroup {
+  id: string;
+  name: string;
+  /** 0 = optional, >= 1 = required. */
+  minSelect: number;
+  maxSelect: number;
+  options: ApiModifierOption[];
+}
+
+export interface ApiImage { id: string; url: string; altText?: string }
+
 // UI-facing shape consumed by the dashboard Products page (apiToProduct/productToForm).
 export interface ApiProduct {
   id: string;
@@ -18,8 +62,10 @@ export interface ApiProduct {
   // null = not tracked (see BUSINESS_TYPES_WITH_STOCK in lib/utils.ts). The Inventory page reads
   // this field directly (not through apiProductToProduct, which collapses null to 0 for the
   // Products-page/Home-widget's simpler always-a-number badge logic) so it can tell "genuinely
-  // zero" apart from "never set" and report honestly.
+  // zero" apart from "never set" and report honestly. For a product with variants this is the sum
+  // of its tracked variants.
   stock: number | null;
+  lowStockThreshold?: number | null;
   sku?: string;
   available?: boolean;
   status: 'active' | 'inactive' | 'out_of_stock';
@@ -27,15 +73,19 @@ export interface ApiProduct {
   tags?: string[];
   createdAt?: string;
   updatedAt?: string;
+  hasVariants?: boolean;
+  inStock?: boolean;
+  options?: ApiOption[];
+  variants?: ApiVariant[];
+  modifierGroups?: ApiModifierGroup[];
+  gallery?: ApiImage[];
 }
 
 // Actual shape of com.byonix.shoplink.api.dto.ProductDtos.ProductResponse. No free-text
 // `category` (only a `categoryId` UUID — resolving it to a name would need a separate categories
-// fetch, not done here), and no `tags`/`images` array (`imageUrl` is the only image). Neither can
-// be faithfully mapped; see mapProduct's comments for exactly what each ApiProduct field is
-// derived from. `stock` is null when the backend isn't tracking it for this product (a service,
-// or a product predating the stock migration) — see BUSINESS_TYPES_WITH_STOCK in lib/utils.ts
-// for which verticals even show a stock field at all.
+// fetch, not done here). `stock` is null when the backend isn't tracking it for this product (a
+// service, or one never given a count) — see BUSINESS_TYPES_WITH_STOCK in lib/utils.ts for which
+// verticals even show a stock field at all.
 interface ApiProductRaw {
   id: string;
   storeId: string;
@@ -50,9 +100,17 @@ interface ApiProductRaw {
   available: boolean;
   featured: boolean;
   stock?: number | null;
+  lowStockThreshold?: number | null;
+  inStock?: boolean;
+  hasVariants?: boolean;
+  options?: ApiOption[];
+  variants?: ApiVariant[];
+  modifierGroups?: ApiModifierGroup[];
+  images?: ApiImage[];
 }
 
 function mapProduct(raw: ApiProductRaw): ApiProduct {
+  const gallery = raw.images ?? [];
   return {
     id: raw.id,
     storeId: raw.storeId,
@@ -65,16 +123,23 @@ function mapProduct(raw: ApiProductRaw): ApiProduct {
     categoryId: raw.categoryId ?? undefined,
     category: '', // no category name on this response — only categoryId (a UUID)
     imageUrl: raw.imageUrl ?? undefined,
-    images: raw.imageUrl ? [raw.imageUrl] : [],
+    images: gallery.length > 0 ? gallery.map(i => i.url) : raw.imageUrl ? [raw.imageUrl] : [],
+    gallery,
     // Preserved as-is (including null) — see the ApiProduct.stock comment above.
     stock: raw.stock ?? null,
+    lowStockThreshold: raw.lowStockThreshold ?? null,
     sku: raw.sku ?? undefined,
     available: raw.available,
-    // Backend only has the `available` boolean — 'out_of_stock' can't be derived (no real
-    // stock count) so it's never produced here; only a merchant explicitly choosing "Out of
-    // Stock" in the form (see toProductRequest) can set that specific local status.
+    // Backend only has the `available` boolean — 'out_of_stock' can't be derived from it; only a
+    // merchant explicitly choosing "Out of Stock" in the form (see toProductRequest) can set that
+    // specific local status.
     status: raw.available ? 'active' : 'inactive',
     featured: raw.featured,
+    hasVariants: raw.hasVariants ?? false,
+    inStock: raw.inStock ?? raw.available,
+    options: raw.options ?? [],
+    variants: raw.variants ?? [],
+    modifierGroups: raw.modifierGroups ?? [],
   };
 }
 
@@ -94,6 +159,10 @@ function slugify(name: string): string {
 // Maps the UI form's Partial<ApiProduct> into com.byonix.shoplink.api.dto.ProductDtos.ProductRequest.
 // storeId and nameEn/slug are @NotNull/@NotBlank on the backend, so they're always sent even
 // though ApiProduct itself only carries storeId optionally.
+//
+// `stock` and `imageUrl` only matter when a product is CREATED (its opening count / first image):
+// afterwards stock changes through Inventory adjustments and pictures through the gallery, and the
+// backend ignores both on update.
 function toProductRequest(storeId: string, data: Partial<ApiProduct>) {
   return {
     storeId,
@@ -108,7 +177,8 @@ function toProductRequest(storeId: string, data: Partial<ApiProduct>) {
     available: data.status !== 'inactive' && data.status !== 'out_of_stock',
     featured: data.featured ?? false,
     sortOrder: 0,
-    stock: data.stock,
+    stock: data.stock ?? undefined,
+    lowStockThreshold: data.lowStockThreshold ?? undefined,
   };
 }
 
@@ -162,4 +232,81 @@ export async function updateProduct(id: string, storeId: string, data: Partial<A
 
 export async function deleteProduct(id: string): Promise<void> {
   return apiRequest(`/api/dashboard/products/${id}`, { method: 'DELETE' });
+}
+
+// ── Options & variants ───────────────────────────────────────────────────────────────────────────
+
+export interface OptionInput { id?: string; name: string; values: { id?: string; label: string }[] }
+
+export interface VariantInput {
+  id?: string;
+  /** One label per option, in the same order as the options in the same request. */
+  selection: string[];
+  sku?: string;
+  price: number;
+  salePrice?: number | null;
+  /** Applied to a NEW variant only — an existing variant's count changes through Inventory adjustments. */
+  stock?: number | null;
+  available: boolean;
+  lowStockThreshold?: number | null;
+}
+
+export interface VariantsInput { options: OptionInput[]; variants: VariantInput[] }
+
+export function getVariants(productId: string): Promise<ApiVariants> {
+  return apiRequest<ApiVariants>(`/api/dashboard/products/${productId}/variants`);
+}
+
+/** Replace-all: what's listed is what the product ends up with. Empty options + variants removes them all. */
+export function saveVariants(productId: string, input: VariantsInput): Promise<ApiVariants> {
+  return apiRequest<ApiVariants>(`/api/dashboard/products/${productId}/variants`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
+// ── Add-ons ──────────────────────────────────────────────────────────────────────────────────────
+
+export interface ModifierGroupInput {
+  id?: string;
+  name: string;
+  minSelect: number;
+  maxSelect: number;
+  options: { id?: string; name: string; priceDelta: number; preselected: boolean; available: boolean }[];
+}
+
+export function getModifierGroups(productId: string): Promise<ApiModifierGroup[]> {
+  return apiRequest<ApiModifierGroup[]>(`/api/dashboard/products/${productId}/modifier-groups`);
+}
+
+export function saveModifierGroups(productId: string, groups: ModifierGroupInput[]): Promise<ApiModifierGroup[]> {
+  return apiRequest<ApiModifierGroup[]>(`/api/dashboard/products/${productId}/modifier-groups`, {
+    method: 'PUT',
+    body: JSON.stringify({ groups }),
+  });
+}
+
+// ── Pictures ─────────────────────────────────────────────────────────────────────────────────────
+
+export interface ImageInput { id?: string; url: string; altText?: string }
+
+export function getProductImages(productId: string): Promise<ApiImage[]> {
+  return apiRequest<ApiImage[]>(`/api/dashboard/products/${productId}/images`);
+}
+
+/** Replace-all, in order; the first image becomes the product's primary picture. */
+export function saveProductImages(productId: string, images: ImageInput[]): Promise<ApiImage[]> {
+  return apiRequest<ApiImage[]>(`/api/dashboard/products/${productId}/images`, {
+    method: 'PUT',
+    body: JSON.stringify({ images }),
+  });
+}
+
+/** Uploads one picture file for the store and returns the public URL to put in a gallery entry. */
+export async function uploadProductImage(storeId: string, file: File): Promise<string> {
+  const form = new FormData();
+  form.append('storeId', storeId);
+  form.append('file', file);
+  const res = await apiRequest<{ url: string }>('/api/dashboard/media/images', { method: 'POST', body: form });
+  return res.url;
 }

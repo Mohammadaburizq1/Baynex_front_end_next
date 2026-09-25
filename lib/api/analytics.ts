@@ -1,4 +1,4 @@
-import { apiRequest } from './client';
+import { apiDownload, apiRequest } from './client';
 
 // com.byonix.shoplink.api.dto.AnalyticsDtos.DailyStoreSalesRow — one row per day that actually
 // had sales. A day with zero orders simply has no row at all; callers fill gaps themselves (see
@@ -29,4 +29,12 @@ export async function getDailyStoreSales(storeId: string, from: string, to: stri
 export async function getTopProducts(storeId: string, from: string, to: string, limit = 10): Promise<ApiTopProduct[]> {
   const params = new URLSearchParams({ storeId, from, to, limit: String(limit) });
   return apiRequest<ApiTopProduct[]>(`/api/dashboard/analytics/top-products?${params.toString()}`);
+}
+
+// The orders behind the Reports page for the same store and from/to (UTC dates) as the charts:
+// one row per non-cancelled order with its stored snapshot values. Built server-side, so this
+// never fabricates a file — any failure (403, 400, network) is thrown to the caller.
+export async function downloadOrdersCsv(storeId: string, from: string, to: string): Promise<{ blob: Blob; filename: string }> {
+  const params = new URLSearchParams({ storeId, from, to });
+  return apiDownload(`/api/dashboard/analytics/orders.csv?${params.toString()}`, `khangates-orders-${from}-to-${to}.csv`);
 }

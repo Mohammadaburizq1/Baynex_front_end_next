@@ -75,7 +75,7 @@ export default function CustomerLoginForm({
             Sign in
           </h1>
           <p className="mt-1.5 text-sm text-center leading-[1.45]" style={{ color: '#475569' }}>
-            You don&apos;t need an account to shop — sign in only if you want to view your profile, payment methods, or loyalty points.
+            You don&apos;t need an account to shop — sign in only if you want to view your profile or order history.
           </p>
         </div>
       )}

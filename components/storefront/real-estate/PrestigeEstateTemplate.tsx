@@ -1,4 +1,5 @@
 'use client';
+import { formatMoneyCompact } from '@/lib/utils';
 
 import { useState } from 'react';
 import { Spectral, Raleway } from 'next/font/google';
@@ -19,12 +20,6 @@ const PARTICLES = Array.from({ length: 18 }, (_, i) => ({
   duration: 5 + (i % 5),
 }));
 
-function formatPrice(p: number): string {
-  if (p >= 1_000_000) return `$${(p / 1_000_000).toFixed(1)}M`;
-  if (p >= 1_000) return `$${(p / 1_000).toFixed(0)}K`;
-  return `$${p.toLocaleString()}`;
-}
-
 function parseSpecs(desc: string): { specs: string[]; detail: string } {
   const parts = desc.split(' · ');
   const specParts = parts.slice(0, 3);
@@ -41,6 +36,9 @@ function SpecIcon({ label }: { label: string }) {
 
 export default function PrestigeEstateTemplate({ data }: { data: StorefrontData }) {
   const { store, products } = data;
+  // Real stores filter by their own categories; the fixed list is showcase-only (it matched nothing real).
+  const categories = data.demo ? CATEGORIES : ['All', ...Array.from(new Set(products.map(p => p.category).filter(Boolean)))];
+  const formatPrice = (p: number) => formatMoneyCompact(p, store.currencyCode);
   const tc = data.templateContent;
   const [activeCategory, setActiveCategory] = useState('All');
   const [selected, setSelected] = useState<(typeof products)[0] | null>(null);
@@ -51,7 +49,8 @@ export default function PrestigeEstateTemplate({ data }: { data: StorefrontData 
   const waMsg = selected
     ? `Hello, I am interested in ${selected.name} (${formatPrice(selected.discountPrice ?? selected.price)}). Please share more details and available viewing times.`
     : `Hello, I would like to enquire about your available properties.`;
-  const waHref = `https://wa.me/${(store.whatsappNumber ?? '').replace(/\D/g, '')}?text=${encodeURIComponent(waMsg)}`;
+  const waDigits = (store.whatsappNumber ?? '').replace(/\D/g, '');
+  const waHref = waDigits ? `https://wa.me/${waDigits}?text=${encodeURIComponent(waMsg)}` : null;
 
   return (
     <>
@@ -207,10 +206,12 @@ export default function PrestigeEstateTemplate({ data }: { data: StorefrontData 
                 <MapPin size={13} color="#4A5A70" />
                 <span className={raleway.className} style={{ fontSize: 12, color: '#4A5A70', letterSpacing: '0.06em' }}>{tc?.openingHours || store.openingHours}</span>
               </div>
+              {waHref && (
               <a href={waHref} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'transparent', border: '1px solid #C9A84C', color: '#C9A84C', padding: '8px 20px', cursor: 'pointer', letterSpacing: '0.12em', fontSize: 12, textDecoration: 'none', fontFamily: raleway.style.fontFamily, fontWeight: 600, transition: 'background 0.2s, color 0.2s' }}>
                 <Phone size={13} />
                 ENQUIRE
               </a>
+              )}
             </div>
           </div>
         </header>
@@ -253,15 +254,17 @@ export default function PrestigeEstateTemplate({ data }: { data: StorefrontData 
             {tc?.heroDescription || store.description}
           </p>
 
+          {waHref && (
           <a href={waHref} target="_blank" rel="noopener noreferrer" className={`pe-cta ${raleway.className}`} style={{ fontSize: 12, textDecoration: 'none', animation: 'fadeUp 0.6s 0.76s ease both, goldPulse 3s 3s ease infinite', opacity: 0 }}>
             Schedule a Private Consultation <ChevronRight size={14} />
           </a>
+          )}
         </section>
 
         {/* Category filter */}
         <div style={{ borderTop: '1px solid #1A2438', borderBottom: '1px solid #1A2438', position: 'sticky', top: 72, zIndex: 40, background: 'rgba(8,11,24,0.96)', backdropFilter: 'blur(16px)' }}>
           <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 32px', display: 'flex', alignItems: 'center', overflowX: 'auto' }}>
-            {CATEGORIES.map((cat) => (
+            {categories.map((cat) => (
               <button
                 key={cat}
                 className={`pe-tab${activeCategory === cat ? ' active' : ''} ${raleway.className}`}
@@ -415,9 +418,11 @@ export default function PrestigeEstateTemplate({ data }: { data: StorefrontData 
                   ))}
                 </div>
 
-                <a href={`https://wa.me/${(store.whatsappNumber ?? '').replace(/\D/g, '')}?text=${encodeURIComponent(`Hello, I am interested in ${selected.name} (${formatPrice(selected.discountPrice ?? selected.price)}). Please share more details and available viewing times.`)}`} target="_blank" rel="noopener noreferrer" className={`pe-cta ${raleway.className}`} style={{ display: 'flex', justifyContent: 'center', fontSize: 12, textDecoration: 'none', width: '100%' }}>
-                  Book a Private Viewing <ChevronRight size={14} />
+                {waDigits && (
+                <a href={`https://wa.me/${waDigits}?text=${encodeURIComponent(`Hello, I am interested in ${selected.name} (${formatPrice(selected.discountPrice ?? selected.price)}). Please share more details and available viewing times.`)}`} target="_blank" rel="noopener noreferrer" className={`pe-cta ${raleway.className}`} style={{ display: 'flex', justifyContent: 'center', fontSize: 12, textDecoration: 'none', width: '100%' }}>
+                  Request a Viewing on WhatsApp <ChevronRight size={14} />
                 </a>
+                )}
               </div>
             </div>
           </div>

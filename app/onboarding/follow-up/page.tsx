@@ -197,7 +197,7 @@ export default function OnboardingFollowUpPage() {
         <span className="text-white font-extrabold text-[17px] font-jakarta tracking-tight">
           Almost There!
         </span>
-        <span className="text-white/50 text-sm font-semibold font-jakarta">ShopLink</span>
+        <span className="text-white/50 text-sm font-semibold font-jakarta">khanGates</span>
       </div>
 
       {/* Content */}

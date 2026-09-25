@@ -1,4 +1,5 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
 import { useState } from 'react';
 import Image from 'next/image';
@@ -35,6 +36,7 @@ export default function FullMenuSection({
 
   return (
     <section
+      id="menu"
       style={{ backgroundColor: bg }}
       className="px-4 sm:px-6 lg:px-8 pt-8 pb-14"
     >
@@ -122,6 +124,8 @@ function MenuProductRow({
   body: string;
   onAdd: () => void;
 }) {
+  // Real stock from the backend: a sold-out (or switched-off) product can't be added.
+  const soldOut = !product.available || product.stock <= 0;
   return (
     <div
       style={{
@@ -181,8 +185,10 @@ function MenuProductRow({
           style={{ color: primary, fontWeight: 900, fontSize: 15, margin: '5px 0 0' }}
           className="font-sans"
         >
-          {effectivePrice.toFixed(2)}{' '}
-          <span style={{ fontSize: 12, fontWeight: 600 }}>{currencySuffix}</span>
+          {formatMoney(effectivePrice, currencySuffix)}
+          {soldOut && (
+            <span style={{ color: '#B42318', fontWeight: 700, fontSize: 12, marginLeft: 8 }}>Sold out</span>
+          )}
           {product.discountPrice && (
             <span
               style={{
@@ -193,7 +199,7 @@ function MenuProductRow({
                 marginLeft: 6,
               }}
             >
-              {product.price.toFixed(2)}
+              {formatMoney(product.price, currencySuffix)}
             </span>
           )}
         </p>
@@ -202,13 +208,15 @@ function MenuProductRow({
       {/* Add button */}
       <button
         onClick={onAdd}
+        disabled={soldOut}
         style={{
           backgroundColor: primary,
           border: 'none',
           borderRadius: 10,
           width: 40,
           height: 40,
-          cursor: 'pointer',
+          opacity: soldOut ? 0.35 : 1,
+          cursor: soldOut ? 'not-allowed' : 'pointer',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',

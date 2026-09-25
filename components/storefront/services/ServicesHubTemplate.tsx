@@ -1,4 +1,5 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
 import { useState, useMemo, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
@@ -93,14 +94,14 @@ function ServiceCard({
           className="font-jakarta font-extrabold text-xl"
           style={{ color: C.ink }}
         >
-          {displayPrice.toLocaleString()} {currencySuffix}
+          {formatMoney(displayPrice, currencySuffix)}
         </span>
         {hasDiscount && (
           <span
             className="font-jakarta font-bold text-sm line-through ml-2"
             style={{ color: C.muted }}
           >
-            {product.price.toLocaleString()} {currencySuffix}
+            {formatMoney(product.price, currencySuffix)}
           </span>
         )}
       </div>
@@ -137,6 +138,8 @@ function BookingModal({
   const { user, isAuthenticated } = useCustomerAuth();
 
   const [slots, setSlots] = useState<ApiAppointmentSlot[]>([]);
+  // A failed load is not the same as "no times published".
+  const [slotsError, setSlotsError] = useState(false);
   const [loadingSlots, setLoadingSlots] = useState(true);
   const [selectedSlotId, setSelectedSlotId] = useState('');
   const [bookName, setBookName] = useState(user?.name ?? '');
@@ -149,7 +152,7 @@ function BookingModal({
     let cancelled = false;
     getUpcomingSlots(storeSlug)
       .then((s) => { if (!cancelled) setSlots(s); })
-      .catch(() => { if (!cancelled) setSlots([]); })
+      .catch(() => { if (!cancelled) { setSlots([]); setSlotsError(true); } })
       .finally(() => { if (!cancelled) setLoadingSlots(false); });
     return () => { cancelled = true; };
   }, [storeSlug]);
@@ -210,8 +213,8 @@ function BookingModal({
         {booked ? (
           <div className="text-center py-2">
             <CalendarCheck size={32} className="mx-auto mb-2" color={C.teal} />
-            <p className="font-jakarta font-bold text-sm" style={{ color: C.ink }}>Booking requested!</p>
-            <p className="font-jakarta text-xs mt-1" style={{ color: C.muted }}>We&apos;ll confirm your slot shortly.</p>
+            <p className="font-jakarta font-bold text-sm" style={{ color: C.ink }}>Booking booked!</p>
+            <p className="font-jakarta text-xs mt-1" style={{ color: C.muted }}>Your slot is confirmed.</p>
           </div>
         ) : (
           <div className="space-y-3 mb-4">
@@ -221,7 +224,9 @@ function BookingModal({
             {loadingSlots ? (
               <p className="font-jakarta text-xs" style={{ color: C.muted }}>Loading available times…</p>
             ) : slots.length === 0 ? (
-              <p className="font-jakarta text-xs" style={{ color: C.muted }}>No times published yet — reach out on WhatsApp instead.</p>
+              <p className="font-jakarta text-xs" style={{ color: C.muted }}>{slotsError
+                ? "Couldn't load available times right now. Please try again later."
+                : `No times published yet${whatsappNumber ? ' — reach out on WhatsApp instead' : ''}.`}</p>
             ) : (
               <>
                 <select

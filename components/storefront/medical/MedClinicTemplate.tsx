@@ -1,4 +1,5 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
 import { useState, useEffect, useRef } from 'react';
 import { Sora, DM_Sans } from 'next/font/google';
@@ -58,17 +59,17 @@ const DOCTORS = [
 
 const TRUST_PILLARS = [
   { Icon: ShieldCheck, title: 'Accredited Facility', desc: 'JCI-accredited and fully licensed by the national health authority.' },
-  { Icon: Activity, title: 'Same-Day Results', desc: 'Advanced on-site lab delivers most results within hours, not days.' },
+  { Icon: Activity, title: 'Clear Next Steps', desc: 'We explain your results and your options in plain language.' },
   { Icon: Heart, title: 'Patient-First Care', desc: 'Every care plan is built around your health goals and personal history.' },
 ];
 
 const WHY_US = [
-  '20+ years of clinical excellence',
+  'Experienced, qualified clinicians',
   'In-house diagnostics & imaging',
   'Multilingual care team',
-  'Telehealth appointments available',
+  'Simple booking over WhatsApp',
   'Transparent, itemised billing',
-  'Same-day urgent care slots',
+  'Appointments arranged over WhatsApp',
 ];
 
 const TESTIMONIALS = [
@@ -110,7 +111,9 @@ export default function MedClinicTemplate({ data }: { data: StorefrontData }) {
   }, []);
 
   const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
-  const waBase = `https://wa.me/${(store.whatsappNumber ?? '').replace(/\D/g, '')}`;
+  const waDigits = (store.whatsappNumber ?? '').replace(/\D/g, '');
+  // No number, no WhatsApp CTAs: a bare wa.me link opens WhatsApp with no recipient.
+  const waBase = waDigits ? `https://wa.me/${waDigits}` : null;
   const categories = ['All', ...Array.from(new Set(products.map(p => p.category)))];
   const filtered = category === 'All' ? products : products.filter(p => p.category === category);
 
@@ -507,10 +510,12 @@ export default function MedClinicTemplate({ data }: { data: StorefrontData }) {
             </div>
           </div>
           <div className="mc-nav-links">
-            {[['Services','mc-services'],['About','mc-about'],['Our Doctors','mc-team'],['Contact','mc-contact']].map(([l,id]) => (
+            {[['Services','mc-services'],['About','mc-about'],...(data.demo ? [['Our Doctors','mc-team']] : []),['Contact','mc-contact']].map(([l,id]) => (
               <button key={id} className="mc-nav-link" onClick={() => scrollTo(id)}>{l}</button>
             ))}
-            <button className="mc-nav-cta" onClick={() => window.open(waBase,'_blank')}>Book Appointment</button>
+            {waBase && (
+            <button className="mc-nav-cta" onClick={() => window.open(waBase,'_blank')}>Book on WhatsApp</button>
+            )}
           </div>
         </div>
       </nav>
@@ -553,6 +558,7 @@ export default function MedClinicTemplate({ data }: { data: StorefrontData }) {
       </div>
 
       {/* ── STATS ── */}
+      {data.demo && (<>
       <div className="mc-stats" ref={statsRef}>
         <div className="mc-stats-inner">
           {[
@@ -568,6 +574,7 @@ export default function MedClinicTemplate({ data }: { data: StorefrontData }) {
           ))}
         </div>
       </div>
+      </>)}
 
       {/* ── SERVICES ── */}
       <div id="mc-services">
@@ -589,12 +596,14 @@ export default function MedClinicTemplate({ data }: { data: StorefrontData }) {
                 <div key={svc.id} className="mc-svc-card" style={up(servVis, 80 + i * 55)}>
                   <div className="mc-svc-icon"><Icon size={18} /></div>
                   <div className="mc-svc-cat">{svc.category}</div>
-                  <div className={`mc-svc-price ${sora.className}`}>${svc.price}</div>
+                  <div className={`mc-svc-price ${sora.className}`}>{formatMoney(svc.discountPrice ?? svc.price, store.currencyCode)}</div>
                   <div className="mc-svc-name">{svc.name}</div>
                   <p className="mc-svc-desc">{svc.description}</p>
+                  {waBase && (
                   <a className="mc-svc-book" href={`${waBase}?text=${encodeURIComponent(msg)}`} target="_blank" rel="noopener noreferrer">
-                    Book Now <ArrowRight size={12} />
+                    Book on WhatsApp <ArrowRight size={12} />
                   </a>
+                  )}
                 </div>
               );
             })}
@@ -609,10 +618,12 @@ export default function MedClinicTemplate({ data }: { data: StorefrontData }) {
             <div style={left(aboutVis)}>
               <div className="mc-about-img-wrap">
                 <img className="mc-about-img" src="https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&w=700&q=80" alt="Clinic" />
+                {data.demo && (
                 <div className="mc-about-badge">
                   <div className={`mc-badge-n ${sora.className}`}>24</div>
                   <div className="mc-badge-l">Years<br />Established</div>
                 </div>
+                )}
               </div>
             </div>
             <div style={right(aboutVis, 100)}>
@@ -638,6 +649,7 @@ export default function MedClinicTemplate({ data }: { data: StorefrontData }) {
       </div>
 
       {/* ── TEAM ── */}
+      {data.demo && (<>
       <div id="mc-team">
         <div className="mc-wrap" ref={teamRef}>
           <div style={up(teamVis)}>
@@ -653,17 +665,21 @@ export default function MedClinicTemplate({ data }: { data: StorefrontData }) {
                   <div className={`mc-doctor-name ${sora.className}`}>{d.name}</div>
                   <div className="mc-doctor-title">{d.title}</div>
                   <div className="mc-doctor-line" />
+                  {waBase && (
                   <a className="mc-doctor-wa" href={`${waBase}?text=${encodeURIComponent(`Hi! I'd like to book with ${d.name}.`)}`} target="_blank" rel="noopener noreferrer">
                     Book Appointment <ArrowRight size={12} />
                   </a>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         </div>
       </div>
+      </>)}
 
       {/* ── TESTIMONIALS ── */}
+      {data.demo && (<>
       <div className="mc-test-band" ref={testRef}>
         <div className="mc-test-inner">
           <div style={{ ...up(testVis), textAlign: 'center' }}>
@@ -686,6 +702,7 @@ export default function MedClinicTemplate({ data }: { data: StorefrontData }) {
           </div>
         </div>
       </div>
+      </>)}
 
       {/* ── CTA ── */}
       <div id="mc-contact" className="mc-cta-band" ref={ctaRef}>
@@ -694,13 +711,15 @@ export default function MedClinicTemplate({ data }: { data: StorefrontData }) {
             <h2 className={`mc-cta-h2 ${sora.className}`}>
               Ready to Take<br />Control of Your <span>Health?</span>
             </h2>
-            <p className="mc-cta-sub">Book your consultation today. Same-day appointments often available for urgent concerns.</p>
+            <p className="mc-cta-sub">Book your consultation today. Message us and we will arrange a time that suits you.</p>
           </div>
           <div className="mc-cta-right" style={right(ctaVis, 100)}>
+            {waBase && (
             <a className="mc-cta-wa" href={waBase} target="_blank" rel="noopener noreferrer">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
               Book via WhatsApp
             </a>
+            )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
               {(tc?.openingHours || store.openingHours) && <div className="mc-cta-detail"><Clock size={13} />{tc?.openingHours || store.openingHours}</div>}
               <div className="mc-cta-detail"><MapPin size={13} />Clinic Location</div>

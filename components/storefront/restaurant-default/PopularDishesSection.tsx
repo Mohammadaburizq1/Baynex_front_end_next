@@ -1,18 +1,19 @@
 'use client';
+import { formatMoney } from '@/lib/utils';
 
 import { useRef } from 'react';
 import type { PublicProduct } from '@/lib/types/store';
 import type { CuisinePreset } from '@/lib/data/cuisine-presets';
-import { SAMPLE_DISHES } from '@/lib/data/sample-dishes';
 import DishCard from './DishCard';
 
 interface DishVM {
-  /** Real product id, or null for a sample/placeholder dish that can't be ordered. */
-  id: number | null;
+  id: number;
   name: string;
   description: string;
   priceLabel: string;
   imageUrl: string;
+  /** Can't be bought right now (switched off, or sold out). */
+  soldOut?: boolean;
 }
 
 interface PopularDishesSectionProps {
@@ -33,24 +34,10 @@ function buildDishes(products: PublicProduct[], currencySuffix: string): DishVM[
       id: p.id,
       name: p.name,
       description: p.description || p.category,
-      priceLabel: `${effectivePrice.toFixed(2)} ${currencySuffix}`,
+      priceLabel: formatMoney(effectivePrice, currencySuffix),
       imageUrl: p.imageUrl.trim(),
+      soldOut: !p.available || p.stock <= 0,
     });
-  }
-
-  let i = 0;
-  while (out.length < 6 && i < SAMPLE_DISHES.length) {
-    const s = SAMPLE_DISHES[i];
-    if (!out.some((d) => d.name === s.name)) {
-      out.push({
-        id: null,
-        name: s.name,
-        description: s.description,
-        priceLabel: `$${s.priceUsd.toFixed(0)}`,
-        imageUrl: s.imageUrl,
-      });
-    }
-    i++;
   }
 
   return out;
@@ -64,6 +51,8 @@ export default function PopularDishesSection({
 }: PopularDishesSectionProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const dishes = buildDishes(products, currencySuffix);
+  // Only the store's own products with photos: never padded with sample dishes or ratings.
+  if (dishes.length === 0) return null;
   const primary = preset.primary;
   const heading = '#0D102B';
   const bgAlt = preset.backgroundAlt;
@@ -112,10 +101,9 @@ export default function PopularDishesSection({
                 description={d.description}
                 priceLabel={d.priceLabel}
                 imageUrl={d.imageUrl}
-                ratingLabel="⭐ 4.9"
                 preset={preset}
-                disabled={!d.id}
-                onAdd={() => { if (d.id) onAddProduct?.(d.id); }}
+                disabled={!d.id || d.soldOut}
+                onAdd={() => { if (d.id && !d.soldOut) onAddProduct?.(d.id); }}
               />
             </div>
           ))}
@@ -130,10 +118,9 @@ export default function PopularDishesSection({
               description={d.description}
               priceLabel={d.priceLabel}
               imageUrl={d.imageUrl}
-              ratingLabel="⭐ 4.9"
               preset={preset}
-              disabled={!d.id}
-              onAdd={() => { if (d.id) onAddProduct?.(d.id); }}
+              disabled={!d.id || d.soldOut}
+              onAdd={() => { if (d.id && !d.soldOut) onAddProduct?.(d.id); }}
             />
           ))}
         </div>
@@ -147,10 +134,9 @@ export default function PopularDishesSection({
               description={d.description}
               priceLabel={d.priceLabel}
               imageUrl={d.imageUrl}
-              ratingLabel="⭐ 4.9"
               preset={preset}
-              disabled={!d.id}
-              onAdd={() => { if (d.id) onAddProduct?.(d.id); }}
+              disabled={!d.id || d.soldOut}
+              onAdd={() => { if (d.id && !d.soldOut) onAddProduct?.(d.id); }}
             />
           ))}
         </div>

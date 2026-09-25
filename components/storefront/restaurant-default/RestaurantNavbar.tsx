@@ -12,7 +12,13 @@ interface RestaurantNavbarProps {
   onCart: () => void;
 }
 
-const NAV_LINKS = ['Home', 'Menu', 'Reservation', 'Contact', 'About', 'Blog'];
+// Only sections this page actually has; each link scrolls to it.
+const NAV_LINKS: [string, string | null][] = [['Home', null], ['Menu', 'menu'], ['Contact', 'contact']];
+
+function scrollToSection(id: string | null) {
+  if (id) document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+  else window.scrollTo({ top: 0, behavior: 'smooth' });
+}
 
 export default function RestaurantNavbar({
   storeName,
@@ -78,26 +84,6 @@ export default function RestaurantNavbar({
 
           {/* Action icons */}
           <div className="flex items-center gap-1">
-            {/* Search */}
-            <button
-              className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors"
-              aria-label="Search"
-            >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke={heading}
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{ opacity: 0.85 }}
-              >
-                <circle cx="11" cy="11" r="8" />
-                <path d="m21 21-4.35-4.35" />
-              </svg>
-            </button>
 
             {/* Cart with badge */}
             <button
@@ -130,26 +116,6 @@ export default function RestaurantNavbar({
               )}
             </button>
 
-            {/* Favorites */}
-            <button
-              className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors"
-              aria-label="Favorites"
-            >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke={heading}
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{ opacity: 0.85 }}
-              >
-                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-              </svg>
-            </button>
-
             {/* Login / account CTA */}
             <a
               href={isAuthenticated ? '/customer/account' : `/customer/login?redirect=${encodeURIComponent(pathname)}`}
@@ -177,10 +143,10 @@ export default function RestaurantNavbar({
         {/* Nav links row */}
         <div className="overflow-x-auto scrollbar-hide">
           <div className="flex items-center gap-0 h-[24px] mb-1 min-w-max sm:justify-center">
-            {NAV_LINKS.map((link) => (
+            {NAV_LINKS.map(([link, target]) => (
               <button
                 key={link}
-                onClick={() => setActiveLink(link)}
+                onClick={() => { setActiveLink(link); scrollToSection(target); }}
                 className="flex flex-col items-center justify-center px-2.5 rounded-lg hover:bg-black/5 transition-colors"
                 style={{ height: 24 }}
               >

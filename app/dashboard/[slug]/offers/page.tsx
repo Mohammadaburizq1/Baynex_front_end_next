@@ -232,10 +232,10 @@ export default function OffersPage() {
                     <tr key={o.id} className="border-b border-surface-100 last:border-0">
                       <td className="px-4 py-3 font-semibold text-slate-900 tabular-nums">{o.code}</td>
                       <td className="px-4 py-3 text-slate-700">
-                        {o.discountType === 'PERCENTAGE' ? `${o.discountValue}%` : formatCurrency(o.discountValue)}
+                        {o.discountType === 'PERCENTAGE' ? `${o.discountValue}%` : formatCurrency(o.discountValue, store.currency)}
                       </td>
                       <td className="px-4 py-3 text-slate-500">
-                        {o.minOrderAmount != null ? formatCurrency(o.minOrderAmount) : '—'}
+                        {o.minOrderAmount != null ? formatCurrency(o.minOrderAmount, store.currency) : '—'}
                       </td>
                       <td className="px-4 py-3 text-slate-500 tabular-nums">
                         {o.timesUsed}{o.maxUses != null ? ` / ${o.maxUses}` : ''}

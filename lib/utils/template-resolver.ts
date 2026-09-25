@@ -51,13 +51,24 @@ export type StorefrontTemplate =
   | 'clothing-streetwear'
   | 'clothing-boutique';
 
+const LEGACY_TEMPLATE_ALIASES: Record<string, StorefrontTemplate> = {
+  // Used by the legacy Flutter catalog and by older preview data. New stores use the
+  // canonical ID already shared by onboarding, the registry, and the preview route.
+  'real-estate-skyline-estate': 'real-estate-skyline',
+};
+
 export function normalizeSlug(raw: string | null | undefined): string {
   return (raw ?? '').trim().toLowerCase().replace(/_/g, '-');
 }
 
+export function normalizeTemplateId(raw: string | null | undefined): string {
+  const normalized = normalizeSlug(raw);
+  return LEGACY_TEMPLATE_ALIASES[normalized] ?? normalized;
+}
+
 export function resolveTemplate(store: PublicStore): StorefrontTemplate {
   const { businessType, businessSubCategorySlug } = store;
-  const sub = normalizeSlug(businessSubCategorySlug);
+  const sub = normalizeTemplateId(businessSubCategorySlug);
 
   if (businessType === 'restaurant') {
     switch (sub) {
@@ -95,7 +106,7 @@ export function resolveTemplate(store: PublicStore): StorefrontTemplate {
 
   if (businessType === 'real_estate') {
     if (sub === 'real-estate-open-house')     return 'real-estate-open-house';
-    if (sub === 'real-estate-skyline-estate') return 'real-estate-skyline';
+    if (sub === 'real-estate-skyline')       return 'real-estate-skyline';
     if (sub === 'real-estate-prestige')       return 'real-estate-prestige';
     if (sub === 'real-estate-agency')         return 'real-estate-agency';
     if (sub === 'real-estate-corporate')      return 'real-estate-corporate';
