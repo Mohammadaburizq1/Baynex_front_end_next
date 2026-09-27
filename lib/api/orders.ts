@@ -40,6 +40,8 @@ export interface ApiOrder {
   notes?: string;
   createdAt: string;
   updatedAt?: string;
+  source?: 'WEB' | 'POS';
+  posReceiptNumber?: string | null;
 }
 
 // Actual shape of com.byonix.shoplink.api.dto.OrderDtos.OrderResponse/OrderItemResponse.
@@ -86,6 +88,8 @@ interface ApiOrderRaw {
   notes?: string | null;
   createdAt: string;
   items: ApiOrderItemRaw[];
+  source?: 'WEB' | 'POS';
+  posReceiptNumber?: string | null;
 }
 
 // The backend's order lifecycle is NEW -> CONFIRMED -> PREPARING -> READY -> DELIVERED (or
@@ -164,6 +168,8 @@ function mapOrder(raw: ApiOrderRaw): ApiOrder {
     deliveryAddress: raw.customerAddress ?? undefined,
     notes: raw.notes ?? undefined,
     createdAt: raw.createdAt,
+    source: raw.source ?? 'WEB',
+    posReceiptNumber: raw.posReceiptNumber ?? null,
     // Not sent by the backend at all: tax, customerId. Left undefined — callers already fall
     // back sensibly (see orders/page.tsx's apiToOrder).
   };
@@ -205,6 +211,8 @@ export function apiOrderToOrder(o: ApiOrder): Order {
     notes: o.notes,
     createdAt: o.createdAt,
     updatedAt: o.updatedAt ?? o.createdAt,
+    source: o.source ?? 'WEB',
+    posReceiptNumber: o.posReceiptNumber ?? null,
   };
 }
 

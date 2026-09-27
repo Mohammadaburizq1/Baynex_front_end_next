@@ -21,6 +21,7 @@ import {
 } from '@/lib/utils';
 import type { Order, OrderStatus, PaymentStatus } from '@/lib/types';
 import { apiOrderToOrder } from '@/lib/api/orders';
+import { PosConflictsPanel } from '@/components/dashboard/PosConflictsPanel';
 
 // ── Status progression map ─────────────────────────────────────────────────────
 
@@ -195,9 +196,11 @@ function OrderDetailPanel({ order, canEdit, onClose, onStatusChange, onPaymentSt
           <div>
             <h2 className="text-base font-semibold text-slate-900">
               Order {order.orderNumber}
+              {order.source === 'POS' && <PosBadge />}
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
               {formatDateTime(order.createdAt)}
+              {order.source === 'POS' && order.posReceiptNumber && ` · POS receipt ${order.posReceiptNumber}`}
             </p>
           </div>
           <button
@@ -540,6 +543,10 @@ function OrdersPageContent() {
 
       <main className="flex-1 overflow-y-auto p-4 md:p-6 space-y-5">
 
+        {!store.id.startsWith('local-') && (
+          <PosConflictsPanel storeId={store.id} currency={store.currency} onOpenOrder={setSelectedOrderId} />
+        )}
+
         {/* ── Stat chips ──────────────────────────────────────────────────── */}
         <div className="flex flex-wrap gap-2">
           {TABS.map(tab => (
@@ -661,6 +668,7 @@ function OrdersPageContent() {
                       >
                         <td className="px-4 py-3 font-medium text-slate-900 whitespace-nowrap">
                           {order.orderNumber}
+                          {order.source === 'POS' && <PosBadge />}
                         </td>
                         <td className="px-4 py-3">
                           <p className="font-medium text-slate-900">
@@ -737,5 +745,17 @@ function OrdersPageContent() {
         />
       )}
     </SectionAccessGate>
+  );
+}
+
+/** Marks a sale rung up on an in-store POS device (synced into the normal order list). */
+function PosBadge() {
+  return (
+    <span
+      className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-semibold bg-slate-800 text-white align-middle"
+      title="Sold at the counter on a khanGates POS device"
+    >
+      POS
+    </span>
   );
 }

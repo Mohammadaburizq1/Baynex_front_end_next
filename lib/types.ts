@@ -127,6 +127,10 @@ export interface Order {
   notes?: string;
   createdAt: string;
   updatedAt: string;
+  /** Where the order was taken: the storefront (WEB) or an in-store POS device (POS). */
+  source?: 'WEB' | 'POS';
+  /** The POS device's own receipt number, for sales rung up at the counter. */
+  posReceiptNumber?: string | null;
 }
 
 // ── Customers ─────────────────────────────────────────────────────────────────
