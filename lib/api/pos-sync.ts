@@ -15,7 +15,11 @@ export type PosConflictType =
   | 'DISCOUNT_CHANGED'
   | 'DISCOUNT_LIMIT_REACHED'
   | 'STAFF_UNAVAILABLE'
-  | 'OVERRIDE_UNVERIFIED';
+  | 'OVERRIDE_UNVERIFIED'
+  // POS-23 returns/exchanges (backend V39)
+  | 'RETURN_QUANTITY_EXCEEDED'
+  | 'RETURN_APPROVAL_MISSING'
+  | 'EXCHANGE_MISMATCH';
 
 export interface PosConflict {
   id: string;
@@ -61,6 +65,9 @@ export const POS_CONFLICT_LABEL: Record<PosConflictType, string> = {
   DISCOUNT_LIMIT_REACHED: 'Discount limit reached',
   STAFF_UNAVAILABLE: 'Cashier no longer on POS',
   OVERRIDE_UNVERIFIED: 'Manager approval unverified',
+  RETURN_QUANTITY_EXCEEDED: 'Returned twice (another till)',
+  RETURN_APPROVAL_MISSING: 'Return without manager approval',
+  EXCHANGE_MISMATCH: 'Exchange amounts differ',
 };
 
 export async function getPosConflicts(storeId: string, status?: 'OPEN' | 'RESOLVED'): Promise<PosConflictSummary> {

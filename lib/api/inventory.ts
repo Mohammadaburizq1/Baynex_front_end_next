@@ -6,7 +6,7 @@ export type StockStatus = 'UNTRACKED' | 'OK' | 'LOW' | 'OUT';
 export type AdjustMode = 'SET' | 'DELTA';
 /** The reasons a merchant can pick; ORDER_* and INITIAL are written by the system. */
 export type ManualReason = 'RESTOCK' | 'CORRECTION' | 'DAMAGED' | 'RETURNED';
-export type LedgerReason = ManualReason | 'INITIAL' | 'ORDER_PLACED' | 'ORDER_CANCELLED';
+export type LedgerReason = ManualReason | 'INITIAL' | 'ORDER_PLACED' | 'ORDER_CANCELLED' | 'POS_RETURN' | 'POS_EXCHANGE_RETURN';
 
 /** One stockable thing: a product without variants, or one variant of a product that has them. */
 export interface InventoryRow {
@@ -59,6 +59,8 @@ export const REASON_LABELS: Record<LedgerReason, string> = {
   INITIAL: 'Opening count',
   ORDER_PLACED: 'Order placed',
   ORDER_CANCELLED: 'Order cancelled',
+  POS_RETURN: 'POS return',
+  POS_EXCHANGE_RETURN: 'POS exchange return',
 };
 
 export function getInventory(storeId: string): Promise<InventoryRow[]> {
