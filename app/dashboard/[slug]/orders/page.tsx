@@ -400,6 +400,8 @@ function OrdersPageContent() {
   const customerPhoneFilter = searchParams.get('phone');
   const customerNameForFilter = searchParams.get('name');
   const orderIdFromUrl = searchParams.get('order');
+  // From POS Devices: show only that device's sync conflicts.
+  const posDeviceFilter = searchParams.get('posDevice');
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
@@ -544,7 +546,18 @@ function OrdersPageContent() {
       <main className="flex-1 overflow-y-auto p-4 md:p-6 space-y-5">
 
         {!store.id.startsWith('local-') && (
-          <PosConflictsPanel storeId={store.id} currency={store.currency} onOpenOrder={setSelectedOrderId} />
+          <PosConflictsPanel
+            storeId={store.id}
+            currency={store.currency}
+            onOpenOrder={setSelectedOrderId}
+            deviceId={posDeviceFilter}
+            onShowAllDevices={() => {
+              const params = new URLSearchParams(searchParams.toString());
+              params.delete('posDevice');
+              const query = params.toString();
+              router.replace(query ? `${pathname}?${query}` : pathname);
+            }}
+          />
         )}
 
         {/* ── Stat chips ──────────────────────────────────────────────────── */}

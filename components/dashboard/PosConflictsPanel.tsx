@@ -19,10 +19,13 @@ import {
  * kept as an order; this panel is where the manager checks and signs each one off. Renders nothing
  * when there is nothing to review.
  */
-export function PosConflictsPanel({ storeId, currency, onOpenOrder }: {
+export function PosConflictsPanel({ storeId, currency, onOpenOrder, deviceId, onShowAllDevices }: {
   storeId: string;
   currency?: string | null;
   onOpenOrder?: (orderId: string) => void;
+  // Only this POS device's conflicts (linked from POS Devices); the list is still the store's own.
+  deviceId?: string | null;
+  onShowAllDevices?: () => void;
 }) {
   const { success, error } = useToast();
   const [conflicts, setConflicts] = useState<PosConflict[]>([]);
@@ -32,12 +35,12 @@ export function PosConflictsPanel({ storeId, currency, onOpenOrder }: {
   const load = useCallback(async () => {
     try {
       const summary = await getPosConflicts(storeId, 'OPEN');
-      setConflicts(summary.conflicts);
+      setConflicts(deviceId ? summary.conflicts.filter(c => c.deviceId === deviceId) : summary.conflicts);
     } catch {
       // No access to the ORDERS section, or the backend is unreachable: nothing to show here.
       setConflicts([]);
     }
-  }, [storeId]);
+  }, [storeId, deviceId]);
 
   useEffect(() => {
     load();
@@ -75,6 +78,21 @@ export function PosConflictsPanel({ storeId, currency, onOpenOrder }: {
         </span>
         {expanded ? <ChevronUp size={18} className="text-amber-800" /> : <ChevronDown size={18} className="text-amber-800" />}
       </button>
+
+      {deviceId && (
+        <p className="px-4 pb-3 -mt-1 text-xs text-amber-900">
+          Showing conflicts from {conflicts[0]?.deviceName ?? 'one POS device'} only.{' '}
+          {onShowAllDevices && (
+            <button
+              type="button"
+              onClick={onShowAllDevices}
+              className="underline cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 rounded"
+            >
+              Show all devices
+            </button>
+          )}
+        </p>
+      )}
 
       {expanded && (
         <ul className="divide-y divide-amber-200 border-t border-amber-200">

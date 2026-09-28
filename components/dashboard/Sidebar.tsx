@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import {
   LayoutDashboard, ShoppingBag, ClipboardList, Truck, Package,
   BarChart2, Users, Settings, ChevronLeft, Store, CalendarDays,
-  Home, X, Palette, LogOut, Loader2, CreditCard, Lightbulb, Tag, FolderTree,
+  Home, X, Palette, LogOut, Loader2, CreditCard, Lightbulb, Tag, FolderTree, MonitorSmartphone,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useStore } from '@/contexts/StoreContext';
@@ -143,10 +143,17 @@ function bottomNavItems(businessType: BusinessType, slug: string): NavItem[] {
     },
     // Store Settings and Billing are owner-only — staff run day-to-day operations, not the
     // store's configuration or its plan/payment. See OwnerOnlyGate for the matching page guard.
+    // POS devices are managed by the owner only (the backend's PosDeviceController is owner-only),
+    // and only for store types that take orders — POS sales arrive as orders.
+    ...(POS_BUSINESS_TYPES.includes(businessType)
+      ? [{ label: 'POS Devices', href: dashboardPath(slug, 'pos-devices'), icon: MonitorSmartphone, roles: ['owner'] as UserRole[] }]
+      : []),
     { label: 'Store Settings', href: dashboardPath(slug, 'store-settings'), icon: Settings, roles: ['owner'] },
     { label: 'Billing', href: dashboardPath(slug, 'billing'), icon: CreditCard, roles: ['owner'] },
   ];
 }
+
+const POS_BUSINESS_TYPES: BusinessType[] = ['restaurant', 'retail', 'services', 'clothing'];
 
 interface SidebarContentProps {
   onClose?: () => void;

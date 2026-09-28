@@ -9,7 +9,13 @@ export type PosConflictType =
   | 'VARIANT_DELETED'
   | 'VARIANT_UNAVAILABLE'
   | 'PRODUCT_CHANGED'
-  | 'PRICE_CHANGED';
+  | 'PRICE_CHANGED'
+  // POS-12..14 (backend V38)
+  | 'CUSTOMER_UNLINKED'
+  | 'DISCOUNT_CHANGED'
+  | 'DISCOUNT_LIMIT_REACHED'
+  | 'STAFF_UNAVAILABLE'
+  | 'OVERRIDE_UNVERIFIED';
 
 export interface PosConflict {
   id: string;
@@ -50,6 +56,11 @@ export const POS_CONFLICT_LABEL: Record<PosConflictType, string> = {
   VARIANT_UNAVAILABLE: 'Option switched off',
   PRODUCT_CHANGED: 'Product options changed',
   PRICE_CHANGED: 'Price changed after sale',
+  CUSTOMER_UNLINKED: 'Customer not linked',
+  DISCOUNT_CHANGED: 'Discount changed after sale',
+  DISCOUNT_LIMIT_REACHED: 'Discount limit reached',
+  STAFF_UNAVAILABLE: 'Cashier no longer on POS',
+  OVERRIDE_UNVERIFIED: 'Manager approval unverified',
 };
 
 export async function getPosConflicts(storeId: string, status?: 'OPEN' | 'RESOLVED'): Promise<PosConflictSummary> {
