@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import {
   LayoutDashboard, ShoppingBag, ClipboardList, Truck, Package,
   BarChart2, Users, Settings, ChevronLeft, Store, CalendarDays,
-  Home, X, Palette, LogOut, Loader2, CreditCard, Lightbulb, Tag, FolderTree, MonitorSmartphone,
+  Home, X, Palette, LogOut, Loader2, CreditCard, Lightbulb, Tag, FolderTree, MonitorSmartphone, Clock, UtensilsCrossed,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useStore } from '@/contexts/StoreContext';
@@ -145,8 +145,17 @@ function bottomNavItems(businessType: BusinessType, slug: string): NavItem[] {
     // store's configuration or its plan/payment. See OwnerOnlyGate for the matching page guard.
     // POS devices are managed by the owner only (the backend's PosDeviceController is owner-only),
     // and only for store types that take orders — POS sales arrive as orders.
+    // POS-24: till shifts. Viewing follows the Orders grid (as on the backend); force-closing a shift is
+    // checked there too (POS manager rights).
+    // POS-26: restaurant setup (areas, tables, restaurant mode). Shown for every POS store type because
+    // the merchant may switch restaurant mode on for a non-restaurant business; reading follows Orders,
+    // changing is checked on the backend (POS manager rights).
     ...(POS_BUSINESS_TYPES.includes(businessType)
-      ? [{ label: 'POS Devices', href: dashboardPath(slug, 'pos-devices'), icon: MonitorSmartphone, roles: ['owner'] as UserRole[] }]
+      ? [
+          { label: 'Restaurant Setup', href: dashboardPath(slug, 'restaurant'), icon: UtensilsCrossed, permission: 'ORDERS' as DashboardSection },
+          { label: 'POS Shifts', href: dashboardPath(slug, 'pos-shifts'), icon: Clock, permission: 'ORDERS' as DashboardSection },
+          { label: 'POS Devices', href: dashboardPath(slug, 'pos-devices'), icon: MonitorSmartphone, roles: ['owner'] as UserRole[] },
+        ]
       : []),
     { label: 'Store Settings', href: dashboardPath(slug, 'store-settings'), icon: Settings, roles: ['owner'] },
     { label: 'Billing', href: dashboardPath(slug, 'billing'), icon: CreditCard, roles: ['owner'] },

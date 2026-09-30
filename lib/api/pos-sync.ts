@@ -19,7 +19,10 @@ export type PosConflictType =
   // POS-23 returns/exchanges (backend V39)
   | 'RETURN_QUANTITY_EXCEEDED'
   | 'RETURN_APPROVAL_MISSING'
-  | 'EXCHANGE_MISMATCH';
+  | 'EXCHANGE_MISMATCH'
+  // POS-24 shifts (backend V41)
+  | 'SHIFT_RECONCILIATION_MISMATCH'
+  | 'SHIFT_APPROVAL_MISSING';
 
 export interface PosConflict {
   id: string;
@@ -68,6 +71,8 @@ export const POS_CONFLICT_LABEL: Record<PosConflictType, string> = {
   RETURN_QUANTITY_EXCEEDED: 'Returned twice (another till)',
   RETURN_APPROVAL_MISSING: 'Return without manager approval',
   EXCHANGE_MISMATCH: 'Exchange amounts differ',
+  SHIFT_RECONCILIATION_MISMATCH: 'Shift cash: till and server differ',
+  SHIFT_APPROVAL_MISSING: 'Shift cash without manager approval',
 };
 
 export async function getPosConflicts(storeId: string, status?: 'OPEN' | 'RESOLVED'): Promise<PosConflictSummary> {

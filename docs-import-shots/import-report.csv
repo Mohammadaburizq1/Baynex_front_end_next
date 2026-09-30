@@ -1,0 +1,4 @@
+﻿row,sku,barcode,name,status,error_code,error_message
+"2","COKE-330","5449000000996","Coca Cola 330ml","CREATED","",""
+"3","WATER-500","6251234567890","Water 500ml","CREATED","",""
+"4","BURGER-1","6291041500213","Classic Burger","CREATED","",""

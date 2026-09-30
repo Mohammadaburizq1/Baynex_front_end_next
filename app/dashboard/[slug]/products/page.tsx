@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Plus, Pencil, Trash2, ShoppingBag } from 'lucide-react';
+import { Search, Plus, Pencil, Trash2, ShoppingBag, FileSpreadsheet } from 'lucide-react';
 import { Header } from '@/components/dashboard/Header';
 import { SectionAccessGate } from '@/components/dashboard/SectionAccessGate';
 import { Button } from '@/components/ui/Button';
@@ -25,6 +25,7 @@ import {
 import type { Product, ProductStatus } from '@/lib/types';
 import { apiProductToProduct, type ApiProduct } from '@/lib/api/products';
 import { dashboardPath } from '@/lib/utils/dashboard-path';
+import { ProductImportDialog } from '@/components/dashboard/ProductImportDialog';
 
 // ── Form state ─────────────────────────────────────────────────────────────────
 
@@ -102,6 +103,9 @@ export default function ProductsPage() {
   // public URL would change each time it's edited.
   const [slugs, setSlugs] = useState<Record<string, string>>({});
   const [loadingProducts, setLoadingProducts] = useState(true);
+  // Bumped after a bulk import saved products, to load the list again from the server.
+  const [reloadKey, setReloadKey] = useState(0);
+  const [importOpen, setImportOpen] = useState(false);
 
   useEffect(() => {
     async function fetchProducts() {
@@ -127,7 +131,7 @@ export default function ProductsPage() {
       setLoadingProducts(false);
     }
     fetchProducts();
-  }, [store.slug, store.id]);
+  }, [store.slug, store.id, reloadKey]);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -332,6 +336,16 @@ export default function ProductsPage() {
                 onClick={openAdd}
               >
                 Add Item
+              </Button>
+            )}
+            {/* Import needs the real store on the server (a not-yet-saved store has a local-* id). */}
+            {canEdit && synced && (
+              <Button
+                variant="outline"
+                icon={<FileSpreadsheet size={16} />}
+                onClick={() => setImportOpen(true)}
+              >
+                Import Products
               </Button>
             )}
           </div>
@@ -578,6 +592,15 @@ export default function ProductsPage() {
         variant="danger"
         loading={deleting}
       />
+
+      {canEdit && synced && (
+        <ProductImportDialog
+          open={importOpen}
+          storeId={store.id}
+          onClose={() => setImportOpen(false)}
+          onImported={() => { setReloadKey(k => k + 1); success('Products imported.'); }}
+        />
+      )}
     </SectionAccessGate>
   );
 }
